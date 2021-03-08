@@ -37,8 +37,8 @@ const leftSigner = leftChain.getSigner();
 
 const right = {
   port: 9002,
-  _chainId: 66,
-  _chainIdRpc: 66,
+  _chainId: 99,
+  _chainIdRpc: 99,
 };
 const rightServer = (ganache as any).server(right);
 rightServer.listen(right.port, async (err) => {
@@ -62,6 +62,14 @@ function encodeHashLockData(data: HashLockData): string {
     ["tuple(bytes32 h, bytes preImage)"],
     [data]
   );
+}
+
+function decodeHashLockData(data: string): HashLockData {
+  const { h, preImage } = ethers.utils.defaultAbiCoder.decode(
+    ["tuple(bytes32 h, bytes preImage)"],
+    data
+  )[0];
+  return { h, preImage };
 }
 
 const preImage = "0xdeadbeef";
@@ -124,6 +132,8 @@ const correctPreImage: HashLockData = {
     responder
   );
 
+  // given the longChannel is now funded and running
+  // the responder needs to incentivize the executor to do the swap
   const _preFund0 = createHashLockChannel(
     right._chainId,
     30,
@@ -132,6 +142,33 @@ const correctPreImage: HashLockData = {
     responder,
     executor
   );
+
+  const shortChannel = await fundChannel(
+    rightETHAssetHolder,
+    _preFund0,
+    responder,
+    executor
+  );
+
+  // executor unlocks payment that benefits him
+  const _unlock4: State = {
+    ..._preFund0,
+    turnNum: 4,
+    appData: encodeHashLockData(correctPreImage),
+  };
+  const unlock4 = signState(_unlock4, executor.signingWallet.privateKey);
+
+  // responder decodes the preimage and unlocks the payment that benefits her
+  const decodedPreImage = decodeHashLockData(unlock4.state.appData).preImage;
+  const decodedHash = decodeHashLockData(unlock4.state.appData).h;
+  const _Unlock4: State = {
+    ..._PreFund0,
+    turnNum: 4,
+    appData: encodeHashLockData({ h: decodedHash, preImage: decodedPreImage }),
+  };
+  const Unlock4 = signState(_Unlock4, responder.signingWallet.privateKey);
+
+  // both channels are collaboratively defunded
 
   // teardown blockchains
   await leftServer.close();
@@ -166,6 +203,7 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   return [nitroAdjudicator, eTHAssetHolder, hashLock];
 }
 
+// TODO should accept the hash we want to set up with
 function createHashLockChannel(
   chainId: number,
   challengeDuration: number,
@@ -220,14 +258,18 @@ async function fundChannel(
   const PreFund0 = signState(initialState, proposer.signingWallet.privateKey);
   const channelId = getChannelId(initialState.channel);
   // not shown: pf0 delivered to responder
-  proposer.log("I propose a hashlocked payment, sending PreFund0");
+  proposer.log(
+    `I propose a hashlocked payment, sending PreFund0 for chain ${initialState.channel.chainId}`
+  );
   // skip: Responder checks that the timeout is long enough
   // skip: Responder checks that their destination is in the channel (in the receiving slot)
   // skip: When responder verifies that pf1 is supported...
   // Responder joins channel and watches the left chain for funding
   const _PreFund1: State = { ...initialState, turnNum: 1 };
   const PreFund1 = signState(_PreFund1, joiner.signingWallet.privateKey);
-  joiner.log("Sure thing. Your channel looks good. Sending PreFund1");
+  joiner.log(
+    `Sure thing. Your channel looks good. Sending PreFund1 for chain ${initialState.channel.chainId}`
+  );
 
   const responderToReactToDeposit = new Promise((resolve, reject) => {
     const listener = (from, to, amount, event) => {
@@ -239,7 +281,9 @@ async function fundChannel(
           joiner.signingWallet.privateKey
         );
         // not shown: PostFund3 delivered to executor
-        joiner.log("I see your deposit and send PostFund3");
+        joiner.log(
+          `I see your deposit and send PostFund3 for chain ${initialState.channel.chainId}`
+        );
         resolve(event);
       }
     };
@@ -249,7 +293,9 @@ async function fundChannel(
   // not shown: PreFund1 is delivered to executor
   const _PostFund2: State = { ...initialState, turnNum: 2 };
   signState(_PostFund2, proposer.signingWallet.privateKey);
-  proposer.log("I have made my deposit, and send PostFund2");
+  proposer.log(
+    `I have made my deposit, and send PostFund2 for chain ${initialState.channel.chainId}`
+  );
 
   // Executor funds channel (costs gas)
   const { gasUsed: depositGas } = await (
