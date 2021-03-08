@@ -8,6 +8,7 @@
   "private": true,
   "dependencies": {
     "@statechannels/nitro-protocol": "^0.16.0",
+    "chalk": "^4.1.0",
     "ethers": "^5.0.31",
     "ganache-core": "2.13.1",
     "ts-node": "^9.1.1",
