@@ -10,6 +10,7 @@ import {
   getChannelId,
 } from "@statechannels/nitro-protocol";
 import chalk = require("chalk");
+import { create } from "ts-node";
 
 // Spin up two instances of ganache.
 // Deploy NitroAdjudicator, ETHAssetHolder, HashLock to both instances
@@ -109,58 +110,16 @@ const correctPreImage: HashLockData = {
     rightHashLock,
   ] = await deployContractsToChain(rightChain);
 
-  // CONSTRUCT THE LONG CHANNEL (funded on left chain)
-  const chainId = ethers.utils.hexlify(left._chainId);
-  /* 
-    Define the channelNonce 
-    :~ how many times have these participants
-    already run a channel on this chain?
-  */
-  const channelNonce = 0;
+  const _PreFund0 = createHashLockChannel(
+    left._chainId,
+    60,
+    leftHashLock.address,
+    leftETHAssetHolder.address,
+    executor,
+    responder
+  );
 
-  /* 
-    Define the challengeDuration (in seconds)
-    :~ how long should participants get to respond to challenges?
-  */
-  const challengeDuration = 60; // 1 minute
-
-  /* 
-    Mock out the appDefinition and appData.
-    We will get to these later in the tutorial
-  */
-  const appDefinition = leftHashLock.address;
-  const appData = encodeHashLockData(conditionalPayment);
-
-  /* Construct a Channel object */
-  const longChannel: Channel = {
-    chainId,
-    channelNonce,
-    participants: [
-      executor.signingWallet.address,
-      responder.signingWallet.address,
-    ],
-  };
-
-  /* Mock out an outcome */
-  const outcome: Outcome = [
-    {
-      assetHolderAddress: leftETHAssetHolder.address,
-      allocationItems: [
-        { destination: executor.destination, amount: "0x1" },
-        { destination: responder.destination, amount: "0x0" },
-      ],
-    },
-  ];
-
-  const _PreFund0: State = {
-    turnNum: 0,
-    isFinal: false,
-    channel: longChannel,
-    challengeDuration,
-    outcome,
-    appDefinition,
-    appData,
-  };
+  const longChannel = _PreFund0.channel;
 
   // Executor proposes a channel with a hashlocked payment for the proposer
   const PreFund0 = signState(_PreFund0, executor.signingWallet.privateKey);
@@ -233,4 +192,48 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   ).deploy();
 
   return [nitroAdjudicator, eTHAssetHolder, hashLock];
+}
+
+function createHashLockChannel(
+  chainId: number,
+  challengeDuration: number,
+  appDefinition: string,
+  assetHolderAddress: string,
+  proposer: { destination: string; signingWallet: ethers.Wallet },
+  joiner: { destination: string; signingWallet: ethers.Wallet }
+) {
+  const appData = encodeHashLockData(conditionalPayment);
+
+  /* Construct a Channel object */
+  const channel: Channel = {
+    chainId: ethers.utils.hexlify(chainId),
+    channelNonce: 0, // this is the first channel between these participants on this chain
+    participants: [
+      proposer.signingWallet.address,
+      joiner.signingWallet.address,
+    ],
+  };
+
+  /* Mock out an outcome */
+  const outcome: Outcome = [
+    {
+      assetHolderAddress,
+      allocationItems: [
+        { destination: proposer.destination, amount: "0x1" },
+        { destination: joiner.destination, amount: "0x0" },
+      ],
+    },
+  ];
+
+  const initialState: State = {
+    turnNum: 0,
+    isFinal: false,
+    channel,
+    challengeDuration,
+    outcome,
+    appDefinition,
+    appData,
+  };
+
+  return initialState;
 }
