@@ -52,19 +52,19 @@ const rightSigner = rightChain.getSigner();
 
 // Utilities
 // TODO: move to a src file
-interface HashLockData {
+interface HashLockedSwapData {
   h: Bytes32;
   preImage: string; // Bytes
 }
 
-function encodeHashLockData(data: HashLockData): string {
+function encodeHashLockedData(data: HashLockedSwapData): string {
   return ethers.utils.defaultAbiCoder.encode(
     ["tuple(bytes32 h, bytes preImage)"],
     [data]
   );
 }
 
-function decodeHashLockData(data: string): HashLockData {
+function decodeHashLockedSwapData(data: string): HashLockedSwapData {
   const { h, preImage } = ethers.utils.defaultAbiCoder.decode(
     ["tuple(bytes32 h, bytes preImage)"],
     data
@@ -73,7 +73,7 @@ function decodeHashLockData(data: string): HashLockData {
 }
 
 const preImage = "0xdeadbeef";
-const correctPreImage: HashLockData = {
+const correctPreImage: HashLockedSwapData = {
   preImage: preImage,
   // ^^^^ important field (RECEIVER)
   h: ethers.constants.HashZero,
@@ -136,7 +136,7 @@ const correctPreImage: HashLockData = {
     rightETHAssetHolder.address,
     responder,
     executor,
-    decodeHashLockData(_PreFund0.appData).h
+    decodeHashLockedSwapData(_PreFund0.appData).h
   );
 
   const shortChannel = await fundChannel(
@@ -150,17 +150,21 @@ const correctPreImage: HashLockData = {
   const _unlock4: State = {
     ..._preFund0,
     turnNum: 4,
-    appData: encodeHashLockData(correctPreImage),
+    appData: encodeHashLockedData(correctPreImage),
   };
   const unlock4 = signState(_unlock4, executor.signingWallet.privateKey);
 
   // responder decodes the preimage and unlocks the payment that benefits her
-  const decodedPreImage = decodeHashLockData(unlock4.state.appData).preImage;
-  const decodedHash = decodeHashLockData(unlock4.state.appData).h;
+  const decodedPreImage = decodeHashLockedSwapData(unlock4.state.appData)
+    .preImage;
+  const decodedHash = decodeHashLockedSwapData(unlock4.state.appData).h;
   const _Unlock4: State = {
     ..._PreFund0,
     turnNum: 4,
-    appData: encodeHashLockData({ h: decodedHash, preImage: decodedPreImage }),
+    appData: encodeHashLockedData({
+      h: decodedHash,
+      preImage: decodedPreImage,
+    }),
   };
   const Unlock4 = signState(_Unlock4, responder.signingWallet.privateKey);
 
@@ -192,7 +196,7 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   ).deploy(nitroAdjudicator.address);
 
   const hashLock = await ContractFactory.fromSolidity(
-    ContractArtifacts.HashLock,
+    ContractArtifacts.HashLockedSwap,
     signer
   ).deploy();
 
@@ -208,7 +212,7 @@ function createHashLockChannel(
   joiner: { destination: string; signingWallet: ethers.Wallet },
   hash
 ) {
-  const appData = encodeHashLockData({ h: hash, preImage: "0x" });
+  const appData = encodeHashLockedData({ h: hash, preImage: "0x" });
   const channel: Channel = {
     chainId: ethers.utils.hexlify(chainId),
     channelNonce: 0, // this is the first channel between these participants on this chain
