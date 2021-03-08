@@ -7,7 +7,9 @@ import {
   Channel,
   Outcome,
   signState,
+  getChannelId,
 } from "@statechannels/nitro-protocol";
+import chalk = require("chalk");
 
 // Spin up two instances of ganache.
 // Deploy NitroAdjudicator, ETHAssetHolder, HashLock to both instances
@@ -82,11 +84,13 @@ const correctPreImage: HashLockData = {
     signingWallet: ethers.Wallet.createRandom(),
     inbox: [],
     destination: ethers.utils.hexZeroPad(await leftSigner.getAddress(), 32),
+    log: (s: string) => console.log(chalk.keyword("orange")("> " + s)),
   };
   const responder = {
     signingWallet: ethers.Wallet.createRandom(),
     inbox: [],
     destination: ethers.utils.hexZeroPad(await rightSigner.getAddress(), 32),
+    log: (s: string) => console.log(chalk.keyword("blue")("< " + s)),
   };
 
   // SETUP CONTRACTS ON BOTH CHAINS
@@ -143,7 +147,7 @@ const correctPreImage: HashLockData = {
   const appData = encodeHashLockData(conditionalPayment);
 
   /* Construct a Channel object */
-  const channel: Channel = {
+  const longChannel: Channel = {
     chainId,
     channelNonce,
     participants: [
@@ -166,7 +170,7 @@ const correctPreImage: HashLockData = {
   const _pf0: State = {
     turnNum: 0,
     isFinal: false,
-    channel,
+    channel: longChannel,
     challengeDuration,
     outcome,
     appDefinition,
@@ -177,6 +181,37 @@ const correctPreImage: HashLockData = {
   const pf0 = signState(_pf0, executor.signingWallet.privateKey);
 
   // not shown: pf0 delivered to responder
+  executor.log("I propose a hashlocked payment, sending PreFund1");
+  // skip: Responder checks that the timeout is long enough
+  // skip: Responder checks that their destination is in the channel (in the receiving slot)
+  // skip: When responder verifies that pf1 is supported...
+  // Responder joins channel and watches the left chain for funding
+  const _pf1: State = { ..._pf0, turnNum: 1 };
+  const pf1 = signState(_pf1, responder.signingWallet.privateKey);
+
+  const responderToReactToDeposit = new Promise((resolve, reject) => {
+    const listener = (from, to, amount, event) => {
+      if (!ethers.BigNumber.from(event.args.destinationHoldings).isZero()) {
+        // TODO check against the amount specified in the outcome on the state
+        const _pf2: State = { ..._pf0, turnNum: 2 };
+        const pf2 = signState(_pf2, responder.signingWallet.privateKey);
+        responder.log("I see your deposit and send PostFund2");
+        resolve(event);
+      }
+    };
+    leftETHAssetHolder.once("Deposited", listener);
+  });
+
+  // not shown: pf1 is delivered to executor
+
+  // Executor funds channel
+  const receipt = await (
+    await leftETHAssetHolder.deposit(getChannelId(longChannel), 0, 1, {
+      value: 1,
+    })
+  ).wait();
+
+  await responderToReactToDeposit;
 
   // teardown blockchains
   await leftServer.close();
