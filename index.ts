@@ -73,12 +73,6 @@ function decodeHashLockData(data: string): HashLockData {
 }
 
 const preImage = "0xdeadbeef";
-const conditionalPayment: HashLockData = {
-  h: ethers.utils.keccak256(preImage),
-  // ^^^^ important field (SENDER)
-  preImage: "0x",
-};
-
 const correctPreImage: HashLockData = {
   preImage: preImage,
   // ^^^^ important field (RECEIVER)
@@ -121,7 +115,8 @@ const correctPreImage: HashLockData = {
     leftHashLock.address,
     leftETHAssetHolder.address,
     executor,
-    responder
+    responder,
+    ethers.utils.keccak256(preImage)
   );
 
   // exchanges setup states and funds on left chain
@@ -140,7 +135,8 @@ const correctPreImage: HashLockData = {
     rightHashLock.address,
     rightETHAssetHolder.address,
     responder,
-    executor
+    executor,
+    decodeHashLockData(_PreFund0.appData).h
   );
 
   const shortChannel = await fundChannel(
@@ -203,18 +199,16 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   return [nitroAdjudicator, eTHAssetHolder, hashLock];
 }
 
-// TODO should accept the hash we want to set up with
 function createHashLockChannel(
   chainId: number,
   challengeDuration: number,
   appDefinition: string,
   assetHolderAddress: string,
   proposer: { destination: string; signingWallet: ethers.Wallet },
-  joiner: { destination: string; signingWallet: ethers.Wallet }
+  joiner: { destination: string; signingWallet: ethers.Wallet },
+  hash
 ) {
-  const appData = encodeHashLockData(conditionalPayment);
-
-  /* Construct a Channel object */
+  const appData = encodeHashLockData({ h: hash, preImage: "0x" });
   const channel: Channel = {
     chainId: ethers.utils.hexlify(chainId),
     channelNonce: 0, // this is the first channel between these participants on this chain
@@ -223,8 +217,6 @@ function createHashLockChannel(
       joiner.signingWallet.address,
     ],
   };
-
-  /* Mock out an outcome */
   const outcome: Outcome = [
     {
       assetHolderAddress,
@@ -234,7 +226,6 @@ function createHashLockChannel(
       ],
     },
   ];
-
   const initialState: State = {
     turnNum: 0,
     isFinal: false,
@@ -244,7 +235,6 @@ function createHashLockChannel(
     appDefinition,
     appData,
   };
-
   return initialState;
 }
 
