@@ -85,15 +85,19 @@ const correctPreImage: HashLockData = {
     inbox: [],
     destination: ethers.utils.hexZeroPad(await leftSigner.getAddress(), 32),
     log: (s: string) => console.log(chalk.keyword("orange")("> " + s)),
+    gasSpent: 0,
   };
   const responder = {
     signingWallet: ethers.Wallet.createRandom(),
     inbox: [],
     destination: ethers.utils.hexZeroPad(await rightSigner.getAddress(), 32),
     log: (s: string) => console.log(chalk.keyword("blue")("< " + s)),
+    gasSpent: 0,
   };
 
   // SETUP CONTRACTS ON BOTH CHAINS
+  // In reality, the executor and responder would have their own providers / signers for both chains
+  // For simplicity, they share providers here.
   const leftNitroAdjudicator = await ContractFactory.fromSolidity(
     ContractArtifacts.NitroAdjudicatorArtifact,
     leftSigner
@@ -167,7 +171,7 @@ const correctPreImage: HashLockData = {
     },
   ];
 
-  const _pf0: State = {
+  const _PreFund0: State = {
     turnNum: 0,
     isFinal: false,
     channel: longChannel,
@@ -178,38 +182,48 @@ const correctPreImage: HashLockData = {
   };
 
   // Executor proposes a channel with a hashlocked payment for the proposer
-  const pf0 = signState(_pf0, executor.signingWallet.privateKey);
+  const PreFund0 = signState(_PreFund0, executor.signingWallet.privateKey);
 
   // not shown: pf0 delivered to responder
-  executor.log("I propose a hashlocked payment, sending PreFund1");
+  executor.log("I propose a hashlocked payment, sending PreFund0");
   // skip: Responder checks that the timeout is long enough
   // skip: Responder checks that their destination is in the channel (in the receiving slot)
   // skip: When responder verifies that pf1 is supported...
   // Responder joins channel and watches the left chain for funding
-  const _pf1: State = { ..._pf0, turnNum: 1 };
-  const pf1 = signState(_pf1, responder.signingWallet.privateKey);
+  const _PreFund1: State = { ..._PreFund0, turnNum: 1 };
+  const PreFund1 = signState(_PreFund1, responder.signingWallet.privateKey);
+  responder.log("Sure thing. Your channel looks good. Sending PreFund1");
 
   const responderToReactToDeposit = new Promise((resolve, reject) => {
     const listener = (from, to, amount, event) => {
       if (!ethers.BigNumber.from(event.args.destinationHoldings).isZero()) {
         // TODO check against the amount specified in the outcome on the state
-        const _pf2: State = { ..._pf0, turnNum: 2 };
-        const pf2 = signState(_pf2, responder.signingWallet.privateKey);
-        responder.log("I see your deposit and send PostFund2");
+        const _PostFund3: State = { ..._PreFund0, turnNum: 3 };
+        const PostFund3 = signState(
+          _PostFund3,
+          responder.signingWallet.privateKey
+        );
+        // not shown: PostFund3 delivered to executor
+        responder.log("I see your deposit and send PostFund3");
         resolve(event);
       }
     };
     leftETHAssetHolder.once("Deposited", listener);
   });
 
-  // not shown: pf1 is delivered to executor
+  // not shown: PreFund1 is delivered to executor
+  const _PostFund2: State = { ..._PreFund0, turnNum: 2 };
+  signState(_PostFund2, executor.signingWallet.privateKey);
+  executor.log("I have made my deposit, and send PostFund2");
 
-  // Executor funds channel
-  const receipt = await (
+  // Executor funds channel (costs gas)
+  const { gasUsed: depositGas } = await (
     await leftETHAssetHolder.deposit(getChannelId(longChannel), 0, 1, {
       value: 1,
     })
   ).wait();
+  executor.gasSpent += depositGas;
+  executor.log("spent " + executor.gasSpent + " gas");
 
   await responderToReactToDeposit;
 
