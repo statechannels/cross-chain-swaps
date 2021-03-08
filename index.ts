@@ -84,49 +84,30 @@ const correctPreImage: HashLockData = {
     signingWallet: ethers.Wallet.createRandom(),
     inbox: [],
     destination: ethers.utils.hexZeroPad(await leftSigner.getAddress(), 32),
-    log: (s: string) => console.log(chalk.keyword("orange")("> " + s)),
+    log: (s: string) => console.log(chalk.keyword("orangered")("> " + s)),
     gasSpent: 0,
   };
   const responder = {
     signingWallet: ethers.Wallet.createRandom(),
     inbox: [],
     destination: ethers.utils.hexZeroPad(await rightSigner.getAddress(), 32),
-    log: (s: string) => console.log(chalk.keyword("blue")("< " + s)),
+    log: (s: string) => console.log(chalk.keyword("gray")("< " + s)),
     gasSpent: 0,
   };
 
   // SETUP CONTRACTS ON BOTH CHAINS
   // In reality, the executor and responder would have their own providers / signers for both chains
   // For simplicity, they share providers here.
-  const leftNitroAdjudicator = await ContractFactory.fromSolidity(
-    ContractArtifacts.NitroAdjudicatorArtifact,
-    leftSigner
-  ).deploy();
-
-  const leftETHAssetHolder = await ContractFactory.fromSolidity(
-    ContractArtifacts.EthAssetHolderArtifact,
-    leftSigner
-  ).deploy(leftNitroAdjudicator.address);
-
-  const leftHashLock = await ContractFactory.fromSolidity(
-    ContractArtifacts.HashLock,
-    leftSigner
-  ).deploy();
-
-  const rightNitroAdjudicator = await ContractFactory.fromSolidity(
-    ContractArtifacts.NitroAdjudicatorArtifact,
-    rightSigner
-  ).deploy();
-
-  const rightETHAssetHolder = await ContractFactory.fromSolidity(
-    ContractArtifacts.EthAssetHolderArtifact,
-    rightSigner
-  ).deploy(rightNitroAdjudicator.address);
-
-  const rightHashLock = await ContractFactory.fromSolidity(
-    ContractArtifacts.HashLock,
-    rightSigner
-  ).deploy();
+  const [
+    leftNitroAdjudicator,
+    leftETHAssetHolder,
+    leftHashLock,
+  ] = await deployContractsToChain(leftChain);
+  const [
+    rightNitroAdjudicator,
+    rightETHAssetHolder,
+    rightHashLock,
+  ] = await deployContractsToChain(rightChain);
 
   // CONSTRUCT THE LONG CHANNEL (funded on left chain)
   const chainId = ethers.utils.hexlify(left._chainId);
@@ -231,3 +212,25 @@ const correctPreImage: HashLockData = {
   await leftServer.close();
   await rightServer.close();
 })();
+
+async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
+  // This is a one-time operation, so we do not count the gas costs
+  const signer = await chain.getSigner();
+
+  const nitroAdjudicator = await ContractFactory.fromSolidity(
+    ContractArtifacts.NitroAdjudicatorArtifact,
+    signer
+  ).deploy();
+
+  const eTHAssetHolder = await ContractFactory.fromSolidity(
+    ContractArtifacts.EthAssetHolderArtifact,
+    signer
+  ).deploy(nitroAdjudicator.address);
+
+  const hashLock = await ContractFactory.fromSolidity(
+    ContractArtifacts.HashLock,
+    signer
+  ).deploy();
+
+  return [nitroAdjudicator, eTHAssetHolder, hashLock];
+}
