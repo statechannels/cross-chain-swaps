@@ -10,7 +10,6 @@ import {
   getChannelId,
 } from "@statechannels/nitro-protocol";
 import chalk = require("chalk");
-import { create } from "ts-node";
 
 // Spin up two instances of ganache.
 // Deploy NitroAdjudicator, ETHAssetHolder, HashLock to both instances
@@ -81,16 +80,14 @@ const correctPreImage: HashLockData = {
 // *****
 
 (async function () {
-  const executor = {
+  const executor: Actor = {
     signingWallet: ethers.Wallet.createRandom(),
-    inbox: [],
     destination: ethers.utils.hexZeroPad(await leftSigner.getAddress(), 32),
     log: (s: string) => console.log(chalk.keyword("orangered")("> " + s)),
     gasSpent: 0,
   };
-  const responder = {
+  const responder: Actor = {
     signingWallet: ethers.Wallet.createRandom(),
-    inbox: [],
     destination: ethers.utils.hexZeroPad(await rightSigner.getAddress(), 32),
     log: (s: string) => console.log(chalk.keyword("gray")("< " + s)),
     gasSpent: 0,
@@ -119,59 +116,34 @@ const correctPreImage: HashLockData = {
     responder
   );
 
-  const longChannel = _PreFund0.channel;
+  // exchanges setup states and funds on left chain
+  const longChannel = await fundChannel(
+    leftETHAssetHolder,
+    _PreFund0,
+    executor,
+    responder
+  );
 
-  // Executor proposes a channel with a hashlocked payment for the proposer
-  const PreFund0 = signState(_PreFund0, executor.signingWallet.privateKey);
-
-  // not shown: pf0 delivered to responder
-  executor.log("I propose a hashlocked payment, sending PreFund0");
-  // skip: Responder checks that the timeout is long enough
-  // skip: Responder checks that their destination is in the channel (in the receiving slot)
-  // skip: When responder verifies that pf1 is supported...
-  // Responder joins channel and watches the left chain for funding
-  const _PreFund1: State = { ..._PreFund0, turnNum: 1 };
-  const PreFund1 = signState(_PreFund1, responder.signingWallet.privateKey);
-  responder.log("Sure thing. Your channel looks good. Sending PreFund1");
-
-  const responderToReactToDeposit = new Promise((resolve, reject) => {
-    const listener = (from, to, amount, event) => {
-      if (!ethers.BigNumber.from(event.args.destinationHoldings).isZero()) {
-        // TODO check against the amount specified in the outcome on the state
-        const _PostFund3: State = { ..._PreFund0, turnNum: 3 };
-        const PostFund3 = signState(
-          _PostFund3,
-          responder.signingWallet.privateKey
-        );
-        // not shown: PostFund3 delivered to executor
-        responder.log("I see your deposit and send PostFund3");
-        resolve(event);
-      }
-    };
-    leftETHAssetHolder.once("Deposited", listener);
-  });
-
-  // not shown: PreFund1 is delivered to executor
-  const _PostFund2: State = { ..._PreFund0, turnNum: 2 };
-  signState(_PostFund2, executor.signingWallet.privateKey);
-  executor.log("I have made my deposit, and send PostFund2");
-
-  // Executor funds channel (costs gas)
-  const { gasUsed: depositGas } = await (
-    await leftETHAssetHolder.deposit(getChannelId(longChannel), 0, 1, {
-      value: 1,
-    })
-  ).wait();
-  executor.gasSpent += depositGas;
-  executor.log("spent " + executor.gasSpent + " gas");
-
-  await responderToReactToDeposit;
+  const _preFund0 = createHashLockChannel(
+    right._chainId,
+    30,
+    rightHashLock.address,
+    rightETHAssetHolder.address,
+    responder,
+    executor
+  );
 
   // teardown blockchains
   await leftServer.close();
   await rightServer.close();
 })();
 
+interface Actor {
+  destination: string;
+  signingWallet: ethers.Wallet;
+  log: (s: string) => void;
+  gasSpent: number;
+}
 async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   // This is a one-time operation, so we do not count the gas costs
   const signer = await chain.getSigner();
@@ -236,4 +208,59 @@ function createHashLockChannel(
   };
 
   return initialState;
+}
+
+async function fundChannel(
+  eTHAssetHolder: ethers.Contract,
+  initialState: State,
+  proposer: Actor,
+  joiner: Actor
+) {
+  // Executor proposes a channel with a hashlocked payment for the proposer
+  const PreFund0 = signState(initialState, proposer.signingWallet.privateKey);
+  const channelId = getChannelId(initialState.channel);
+  // not shown: pf0 delivered to responder
+  proposer.log("I propose a hashlocked payment, sending PreFund0");
+  // skip: Responder checks that the timeout is long enough
+  // skip: Responder checks that their destination is in the channel (in the receiving slot)
+  // skip: When responder verifies that pf1 is supported...
+  // Responder joins channel and watches the left chain for funding
+  const _PreFund1: State = { ...initialState, turnNum: 1 };
+  const PreFund1 = signState(_PreFund1, joiner.signingWallet.privateKey);
+  joiner.log("Sure thing. Your channel looks good. Sending PreFund1");
+
+  const responderToReactToDeposit = new Promise((resolve, reject) => {
+    const listener = (from, to, amount, event) => {
+      if (!ethers.BigNumber.from(event.args.destinationHoldings).isZero()) {
+        // TODO check against the amount specified in the outcome on the state
+        const _PostFund3: State = { ...initialState, turnNum: 3 };
+        const PostFund3 = signState(
+          _PostFund3,
+          joiner.signingWallet.privateKey
+        );
+        // not shown: PostFund3 delivered to executor
+        joiner.log("I see your deposit and send PostFund3");
+        resolve(event);
+      }
+    };
+    eTHAssetHolder.once("Deposited", listener);
+  });
+
+  // not shown: PreFund1 is delivered to executor
+  const _PostFund2: State = { ...initialState, turnNum: 2 };
+  signState(_PostFund2, proposer.signingWallet.privateKey);
+  proposer.log("I have made my deposit, and send PostFund2");
+
+  // Executor funds channel (costs gas)
+  const { gasUsed: depositGas } = await (
+    await eTHAssetHolder.deposit(channelId, 0, 1, {
+      value: 1,
+    })
+  ).wait();
+  proposer.gasSpent += depositGas;
+  proposer.log("spent " + proposer.gasSpent + " gas");
+
+  await responderToReactToDeposit;
+
+  return channelId;
 }
