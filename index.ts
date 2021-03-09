@@ -10,6 +10,7 @@ import {
   getChannelId,
 } from "@statechannels/nitro-protocol";
 import chalk = require("chalk");
+import { getVariablePart } from "../statechannels/packages/nitro-protocol/lib/src";
 
 // Spin up two instances of ganache.
 // Deploy NitroAdjudicator, ETHAssetHolder, HashLock to both instances
@@ -57,7 +58,7 @@ interface HashLockedSwapData {
   preImage: string; // Bytes
 }
 
-function encodeHashLockedData(data: HashLockedSwapData): string {
+function encodeHashLockedSwapData(data: HashLockedSwapData): string {
   return ethers.utils.defaultAbiCoder.encode(
     ["tuple(bytes32 h, bytes preImage)"],
     [data]
@@ -150,7 +151,7 @@ const correctPreImage: HashLockedSwapData = {
   const _unlock4: State = {
     ..._preFund0,
     turnNum: 4,
-    appData: encodeHashLockedData(correctPreImage),
+    appData: encodeHashLockedSwapData(correctPreImage),
   };
   const unlock4 = signState(_unlock4, executor.signingWallet.privateKey);
 
@@ -161,7 +162,7 @@ const correctPreImage: HashLockedSwapData = {
   const _Unlock4: State = {
     ..._PreFund0,
     turnNum: 4,
-    appData: encodeHashLockedData({
+    appData: encodeHashLockedSwapData({
       h: decodedHash,
       preImage: decodedPreImage,
     }),
@@ -212,7 +213,7 @@ function createHashLockChannel(
   joiner: { destination: string; signingWallet: ethers.Wallet },
   hash
 ) {
-  const appData = encodeHashLockedData({ h: hash, preImage: "0x" });
+  const appData = encodeHashLockedSwapData({ h: hash, preImage: "0x" });
   const channel: Channel = {
     chainId: ethers.utils.hexlify(chainId),
     channelNonce: 0, // this is the first channel between these participants on this chain
