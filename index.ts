@@ -1,4 +1,4 @@
-import { ContractFactory, ethers } from "ethers";
+import { Contract, ContractFactory, ethers } from "ethers";
 import ganache = require("ganache-core");
 import {
   ContractArtifacts,
@@ -176,39 +176,25 @@ const correctPreImage: HashLockedSwapData = {
   const Unlock4 = signState(_Unlock4, responder.signingWallet.privateKey);
 
   // both channels are collaboratively defunded
-  const unlockValid = await leftHashLock.validTransition(
-    getVariablePart(_preFund0),
-    getVariablePart(_unlock4),
-    4, // turnNumB
-    2 // numParticipants
-  );
-  if (!unlockValid) throw Error;
-  responder.log(
-    `I verified your unlock was valid; Here's a final state to help you withdraw on chain ${_unlock4.channel.chainId}`
-  );
-  const _isFinal5: State = { ..._unlock4, isFinal: true };
-  const isFinal5 = signState(_isFinal5, responder.signingWallet.privateKey);
-  // isFinal5 sent to executor
-  executor.log(
-    "Countersigning and calling concludePushOutcomeAndTransferAll..."
-  );
-  const sigs = [
-    isFinal5.signature,
-    signState(_isFinal5, executor.signingWallet.privateKey).signature,
-  ];
-  const { gasUsed } = await (
-    await rightNitroAdjudicator.concludePushOutcomeAndTransferAll(
-      _isFinal5.turnNum,
-      getFixedPart(_isFinal5),
-      hashAppPart(_isFinal5),
-      encodeOutcome(_isFinal5.outcome),
-      1,
-      [0, 0],
-      sigs
-    )
-  ).wait();
-  executor.gasSpent += Number(gasUsed);
-  executor.log(`Spent ${gasUsed} gas, total ${executor.gasSpent}`);
+  await Promise.all([
+    defundChannel(
+      _preFund0,
+      _unlock4,
+      responder,
+      executor,
+      rightHashLock,
+      rightNitroAdjudicator
+    ),
+    defundChannel(
+      _PreFund0,
+      _Unlock4,
+      executor,
+      responder,
+      leftHashLock,
+      leftNitroAdjudicator
+    ),
+  ]);
+  // TODO: verify executor has their money
 
   // teardown blockchains
   await leftServer.close();
@@ -343,6 +329,47 @@ async function fundChannel(
   await responderToReactToDeposit;
 
   return channelId;
+}
+
+async function defundChannel(
+  initialState: State,
+  unlockState: State,
+  proposer: Actor,
+  joiner: Actor,
+  hashLock: Contract,
+  nitroAdjudicator: Contract
+) {
+  const unlockValid = await hashLock.validTransition(
+    getVariablePart(initialState),
+    getVariablePart(unlockState),
+    4, // turnNumB
+    2 // numParticipants
+  );
+  if (!unlockValid) throw Error;
+  proposer.log(
+    `I verified your unlock was valid; Here's a final state to help you withdraw on chain ${initialState.channel.chainId}`
+  );
+  const _isFinal5: State = { ...initialState, isFinal: true };
+  const isFinal5 = signState(_isFinal5, proposer.signingWallet.privateKey);
+  // isFinal5 sent to joiner
+  joiner.log("Countersigning and calling concludePushOutcomeAndTransferAll...");
+  const sigs = [
+    isFinal5.signature,
+    signState(_isFinal5, joiner.signingWallet.privateKey).signature,
+  ];
+  const { gasUsed } = await (
+    await nitroAdjudicator.concludePushOutcomeAndTransferAll(
+      _isFinal5.turnNum,
+      getFixedPart(_isFinal5),
+      hashAppPart(_isFinal5),
+      encodeOutcome(_isFinal5.outcome),
+      1,
+      [0, 0],
+      sigs
+    )
+  ).wait();
+  joiner.gasSpent += Number(gasUsed);
+  joiner.log(`Spent ${gasUsed} gas, total ${joiner.gasSpent}`);
 }
 
 function swap(outcome: Outcome) {
