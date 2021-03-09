@@ -92,13 +92,21 @@ const correctPreImage: HashLockedSwapData = {
     destination: ethers.utils.hexZeroPad(await leftSigner.getAddress(), 32),
     log: (s: string) => console.log(chalk.keyword("orangered")("> " + s)),
     gasSpent: 0,
+    getLeftBalance: async () => await leftSigner.getBalance(),
+    getRightBalance: async () =>
+      await rightChain.getBalance(await leftSigner.getAddress()),
   };
   const responder: Actor = {
     signingWallet: ethers.Wallet.createRandom(),
     destination: ethers.utils.hexZeroPad(await rightSigner.getAddress(), 32),
     log: (s: string) => console.log(chalk.keyword("gray")("< " + s)),
     gasSpent: 0,
+    getLeftBalance: async () =>
+      await leftChain.getBalance(rightSigner.getAddress()),
+    getRightBalance: async () => await rightSigner.getBalance(),
   };
+
+  await logBalances(executor, responder);
 
   // SETUP CONTRACTS ON BOTH CHAINS
   // In reality, the executor and responder would have their own providers / signers for both chains
@@ -194,7 +202,8 @@ const correctPreImage: HashLockedSwapData = {
       leftNitroAdjudicator
     ),
   ]);
-  // TODO: verify executor has their money
+
+  await logBalances(executor, responder);
 
   // teardown blockchains
   await leftServer.close();
@@ -206,6 +215,8 @@ interface Actor {
   signingWallet: ethers.Wallet;
   log: (s: string) => void;
   gasSpent: number;
+  getLeftBalance: () => Promise<ethers.BigNumber>;
+  getRightBalance: () => Promise<ethers.BigNumber>;
 }
 async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   // This is a one-time operation, so we do not count the gas costs
@@ -251,8 +262,14 @@ function createHashLockChannel(
     {
       assetHolderAddress,
       allocationItems: [
-        { destination: proposer.destination, amount: "0x1" },
-        { destination: joiner.destination, amount: "0x0" },
+        {
+          destination: proposer.destination,
+          amount: ethers.constants.WeiPerEther.mul(100).toHexString(),
+        },
+        {
+          destination: joiner.destination,
+          amount: ethers.constants.Zero.toHexString(),
+        },
       ],
     },
   ];
@@ -390,4 +407,11 @@ function swap(outcome: Outcome) {
     },
   ];
   return swappedOutome;
+}
+
+async function logBalances(...actors: Actor[]) {
+  for await (const actor of actors) {
+    actor.log(`I have ${await actor.getLeftBalance()} ETH on the left chain`);
+    actor.log(`I have ${await actor.getRightBalance()} ETH on the right chain`);
+  }
 }
