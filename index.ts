@@ -1,4 +1,4 @@
-import { Contract, ContractFactory, ethers } from "ethers";
+import { BigNumber, Contract, ContractFactory, ethers } from "ethers";
 import ganache = require("ganache-core");
 import {
   ContractArtifacts,
@@ -29,17 +29,18 @@ const responderWallet = ethers.Wallet.createRandom();
 const deployerWallet = ethers.Wallet.createRandom(); // to deploy contracts
 
 const left = {
+  gasPrice: ethers.constants.One.toHexString(),
   port: 9001,
   _chainId: 66,
   _chainIdRpc: 66,
   accounts: [
     {
       secretKey: executorWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.toHexString(),
+      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
     },
     {
       secretKey: deployerWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.toHexString(),
+      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
     },
   ],
 };
@@ -53,17 +54,18 @@ const leftChain = new ethers.providers.JsonRpcProvider(
 );
 
 const right = {
+  gasPrice: ethers.constants.One.toHexString(),
   port: 9002,
   _chainId: 99,
   _chainIdRpc: 99,
   accounts: [
     {
       secretKey: responderWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.toHexString(),
+      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
     },
     {
       secretKey: deployerWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.toHexString(),
+      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
     },
   ],
 };
@@ -287,7 +289,7 @@ function createHashLockChannel(
       allocationItems: [
         {
           destination: convertAddressToBytes32(proposer.signingWallet.address),
-          amount: ethers.constants.WeiPerEther.mul(100).toHexString(),
+          amount: ethers.constants.WeiPerEther.mul(80).toHexString(),
         },
         {
           destination: convertAddressToBytes32(joiner.signingWallet.address),
@@ -314,24 +316,24 @@ async function fundChannel(
   proposer: Actor,
   joiner: Actor
 ) {
-  // Executor proposes a channel with a hashlocked payment for the proposer
+  // Proposer proposes a channel with a hashlocked payment for the joiner
   const PreFund0 = signState(initialState, proposer.signingWallet.privateKey);
   const channelId = getChannelId(initialState.channel);
-  // not shown: pf0 delivered to responder
+  // not shown: pf0 delivered to joiner
   proposer.log(
     `I propose a hashlocked payment, sending PreFund0 for chain ${initialState.channel.chainId}`
   );
-  // skip: Responder checks that the timeout is long enough
-  // skip: Responder checks that their destination is in the channel (in the receiving slot)
-  // skip: When responder verifies that pf1 is supported...
-  // Responder joins channel and watches the left chain for funding
+  // skip: Joiner checks that the timeout is long enough
+  // skip: Joiner checks that their destination is in the channel (in the receiving slot)
+  // skip: When joiner verifies that pf1 is supported...
+  // Joiner joins channel and watches the left chain for funding
   const _PreFund1: State = { ...initialState, turnNum: 1 };
   const PreFund1 = signState(_PreFund1, joiner.signingWallet.privateKey);
   joiner.log(
     `Sure thing. Your channel looks good. Sending PreFund1 for chain ${initialState.channel.chainId}`
   );
 
-  const responderToReactToDeposit = new Promise((resolve, reject) => {
+  const joinerToReactToDeposit = new Promise((resolve, reject) => {
     const listener = (from, to, amount, event) => {
       if (!ethers.BigNumber.from(event.args.destinationHoldings).isZero()) {
         // TODO check against the amount specified in the outcome on the state
@@ -340,7 +342,7 @@ async function fundChannel(
           _PostFund3,
           joiner.signingWallet.privateKey
         );
-        // not shown: PostFund3 delivered to executor
+        // not shown: PostFund3 delivered to proposer
         joiner.log(
           `I see your deposit and send PostFund3 for chain ${initialState.channel.chainId}`
         );
@@ -350,23 +352,26 @@ async function fundChannel(
     eTHAssetHolder.once("Deposited", listener);
   });
 
-  // not shown: PreFund1 is delivered to executor
+  // not shown: PreFund1 is delivered to joiner
   const _PostFund2: State = { ...initialState, turnNum: 2 };
   signState(_PostFund2, proposer.signingWallet.privateKey);
   proposer.log(
     `I have made my deposit, and send PostFund2 for chain ${initialState.channel.chainId}`
   );
 
-  // Executor funds channel (costs gas)
+  const value = (initialState.outcome[0] as AllocationAssetOutcome)
+    .allocationItems[0].amount;
+
+  // Proposer funds channel (costs gas)
   const { gasUsed: depositGas } = await (
-    await eTHAssetHolder.deposit(channelId, 0, 1, {
-      value: 1,
+    await eTHAssetHolder.deposit(channelId, 0, value, {
+      value,
     })
   ).wait();
   proposer.gasSpent += Number(depositGas);
   proposer.log("spent " + proposer.gasSpent + " gas");
 
-  await responderToReactToDeposit;
+  await joinerToReactToDeposit;
 
   return channelId;
 }
@@ -444,7 +449,15 @@ function swap(outcome: Outcome) {
 
 async function logBalances(...actors: Actor[]) {
   for await (const actor of actors) {
-    actor.log(`I have ${await actor.getLeftBalance()} wei on the left chain`);
-    actor.log(`I have ${await actor.getRightBalance()} wei on the right chain`);
+    actor.log(
+      `I have ${(
+        await actor.getLeftBalance()
+      ).toString()} wei on the left chain`
+    );
+    actor.log(
+      `I have ${(
+        await actor.getRightBalance()
+      ).toString()} wei on the right chain`
+    );
   }
 }
