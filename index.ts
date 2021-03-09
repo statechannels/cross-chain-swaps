@@ -8,9 +8,13 @@ import {
   Outcome,
   signState,
   getChannelId,
+  getVariablePart,
+  AllocationAssetOutcome,
+  getFixedPart,
+  hashAppPart,
+  encodeOutcome,
 } from "@statechannels/nitro-protocol";
 import chalk = require("chalk");
-import { getVariablePart } from "../statechannels/packages/nitro-protocol/lib/src";
 
 // Spin up two instances of ganache.
 // Deploy NitroAdjudicator, ETHAssetHolder, HashLock to both instances
@@ -152,6 +156,7 @@ const correctPreImage: HashLockedSwapData = {
     ..._preFund0,
     turnNum: 4,
     appData: encodeHashLockedSwapData(correctPreImage),
+    outcome: swap(_preFund0.outcome),
   };
   const unlock4 = signState(_unlock4, executor.signingWallet.privateKey);
 
@@ -166,10 +171,44 @@ const correctPreImage: HashLockedSwapData = {
       h: decodedHash,
       preImage: decodedPreImage,
     }),
+    outcome: swap(_PreFund0.outcome),
   };
   const Unlock4 = signState(_Unlock4, responder.signingWallet.privateKey);
 
   // both channels are collaboratively defunded
+  const unlockValid = await leftHashLock.validTransition(
+    getVariablePart(_preFund0),
+    getVariablePart(_unlock4),
+    4, // turnNumB
+    2 // numParticipants
+  );
+  if (!unlockValid) throw Error;
+  responder.log(
+    `I verified your unlock was valid; Here's a final state to help you withdraw on chain ${_unlock4.channel.chainId}`
+  );
+  const _isFinal5: State = { ..._unlock4, isFinal: true };
+  const isFinal5 = signState(_isFinal5, responder.signingWallet.privateKey);
+  // isFinal5 sent to executor
+  executor.log(
+    "Countersigning and calling concludePushOutcomeAndTransferAll..."
+  );
+  const sigs = [
+    isFinal5.signature,
+    signState(_isFinal5, executor.signingWallet.privateKey).signature,
+  ];
+  const { gasUsed } = await (
+    await rightNitroAdjudicator.concludePushOutcomeAndTransferAll(
+      _isFinal5.turnNum,
+      getFixedPart(_isFinal5),
+      hashAppPart(_isFinal5),
+      encodeOutcome(_isFinal5.outcome),
+      1,
+      [0, 0],
+      sigs
+    )
+  ).wait();
+  executor.gasSpent += Number(gasUsed);
+  executor.log(`Spent ${gasUsed} gas, total ${executor.gasSpent}`);
 
   // teardown blockchains
   await leftServer.close();
@@ -222,7 +261,7 @@ function createHashLockChannel(
       joiner.signingWallet.address,
     ],
   };
-  const outcome: Outcome = [
+  const outcome: AllocationAssetOutcome[] = [
     {
       assetHolderAddress,
       allocationItems: [
@@ -298,10 +337,30 @@ async function fundChannel(
       value: 1,
     })
   ).wait();
-  proposer.gasSpent += depositGas;
+  proposer.gasSpent += Number(depositGas);
   proposer.log("spent " + proposer.gasSpent + " gas");
 
   await responderToReactToDeposit;
 
   return channelId;
+}
+
+function swap(outcome: Outcome) {
+  if (!("allocationItems" in outcome[0])) throw Error;
+  const swappedOutome: AllocationAssetOutcome[] = [
+    {
+      assetHolderAddress: outcome[0].assetHolderAddress,
+      allocationItems: [
+        {
+          destination: outcome[0].allocationItems[0].destination,
+          amount: outcome[0].allocationItems[1].amount,
+        },
+        {
+          destination: outcome[0].allocationItems[1].destination,
+          amount: outcome[0].allocationItems[0].amount,
+        },
+      ],
+    },
+  ];
+  return swappedOutome;
 }
