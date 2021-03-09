@@ -13,6 +13,7 @@ import {
   getFixedPart,
   hashAppPart,
   encodeOutcome,
+  convertAddressToBytes32,
 } from "@statechannels/nitro-protocol";
 import chalk = require("chalk");
 
@@ -23,12 +24,24 @@ import chalk = require("chalk");
 // Explore unhappy cases
 // Explore off-chain funding use case
 
-// const provider = new ethers.providers.Web3Provider(ganache.provider());
+const executorWallet = ethers.Wallet.createRandom();
+const responderWallet = ethers.Wallet.createRandom();
+const deployerWallet = ethers.Wallet.createRandom(); // to deploy contracts
 
 const left = {
   port: 9001,
   _chainId: 66,
   _chainIdRpc: 66,
+  accounts: [
+    {
+      secretKey: executorWallet.privateKey,
+      balance: ethers.constants.WeiPerEther.toHexString(),
+    },
+    {
+      secretKey: deployerWallet.privateKey,
+      balance: ethers.constants.WeiPerEther.toHexString(),
+    },
+  ],
 };
 const leftServer = (ganache as any).server(left);
 leftServer.listen(left.port, async (err) => {
@@ -38,12 +51,21 @@ leftServer.listen(left.port, async (err) => {
 const leftChain = new ethers.providers.JsonRpcProvider(
   `http://localhost:${left.port}`
 );
-const leftSigner = leftChain.getSigner();
 
 const right = {
   port: 9002,
   _chainId: 99,
   _chainIdRpc: 99,
+  accounts: [
+    {
+      secretKey: responderWallet.privateKey,
+      balance: ethers.constants.WeiPerEther.toHexString(),
+    },
+    {
+      secretKey: deployerWallet.privateKey,
+      balance: ethers.constants.WeiPerEther.toHexString(),
+    },
+  ],
 };
 const rightServer = (ganache as any).server(right);
 rightServer.listen(right.port, async (err) => {
@@ -53,7 +75,6 @@ rightServer.listen(right.port, async (err) => {
 const rightChain = new ethers.providers.JsonRpcProvider(
   `http://localhost:${right.port}`
 );
-const rightSigner = rightChain.getSigner();
 
 // Utilities
 // TODO: move to a src file
@@ -88,29 +109,29 @@ const correctPreImage: HashLockedSwapData = {
 
 (async function () {
   const executor: Actor = {
-    signingWallet: ethers.Wallet.createRandom(),
-    destination: ethers.utils.hexZeroPad(await leftSigner.getAddress(), 32),
+    signingWallet: executorWallet,
     log: (s: string) => console.log(chalk.keyword("orangered")("> " + s)),
     gasSpent: 0,
-    getLeftBalance: async () => await leftSigner.getBalance(),
+    getLeftBalance: async () =>
+      await leftChain.getBalance(executorWallet.address),
     getRightBalance: async () =>
-      await rightChain.getBalance(await leftSigner.getAddress()),
+      await rightChain.getBalance(executorWallet.address),
   };
   const responder: Actor = {
-    signingWallet: ethers.Wallet.createRandom(),
-    destination: ethers.utils.hexZeroPad(await rightSigner.getAddress(), 32),
+    signingWallet: responderWallet,
     log: (s: string) => console.log(chalk.keyword("gray")("< " + s)),
     gasSpent: 0,
     getLeftBalance: async () =>
-      await leftChain.getBalance(rightSigner.getAddress()),
-    getRightBalance: async () => await rightSigner.getBalance(),
+      await leftChain.getBalance(responderWallet.address),
+    getRightBalance: async () =>
+      await rightChain.getBalance(responderWallet.address),
   };
 
   await logBalances(executor, responder);
 
   // SETUP CONTRACTS ON BOTH CHAINS
-  // In reality, the executor and responder would have their own providers / signers for both chains
-  // For simplicity, they share providers here.
+  // Deploy the contracts to chain, and then reconnect them to their respective signers
+  // for the rest of the interactions
   const [
     leftNitroAdjudicator,
     leftETHAssetHolder,
@@ -211,7 +232,6 @@ const correctPreImage: HashLockedSwapData = {
 })();
 
 interface Actor {
-  destination: string;
   signingWallet: ethers.Wallet;
   log: (s: string) => void;
   gasSpent: number;
@@ -220,24 +240,27 @@ interface Actor {
 }
 async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   // This is a one-time operation, so we do not count the gas costs
-  const signer = await chain.getSigner();
+  // use index 1 (deployer) to pay the ETH
+  const deployer = await chain.getSigner(1);
 
   const nitroAdjudicator = await ContractFactory.fromSolidity(
     ContractArtifacts.NitroAdjudicatorArtifact,
-    signer
+    deployer
   ).deploy();
 
   const eTHAssetHolder = await ContractFactory.fromSolidity(
     ContractArtifacts.EthAssetHolderArtifact,
-    signer
+    deployer
   ).deploy(nitroAdjudicator.address);
 
   const hashLock = await ContractFactory.fromSolidity(
     ContractArtifacts.HashLockedSwap,
-    signer
+    deployer
   ).deploy();
 
-  return [nitroAdjudicator, eTHAssetHolder, hashLock];
+  return [nitroAdjudicator, eTHAssetHolder, hashLock].map((contract) =>
+    contract.connect(chain.getSigner(0))
+  );
 }
 
 function createHashLockChannel(
@@ -245,8 +268,8 @@ function createHashLockChannel(
   challengeDuration: number,
   appDefinition: string,
   assetHolderAddress: string,
-  proposer: { destination: string; signingWallet: ethers.Wallet },
-  joiner: { destination: string; signingWallet: ethers.Wallet },
+  proposer: Actor,
+  joiner: Actor,
   hash
 ) {
   const appData = encodeHashLockedSwapData({ h: hash, preImage: "0x" });
@@ -263,11 +286,11 @@ function createHashLockChannel(
       assetHolderAddress,
       allocationItems: [
         {
-          destination: proposer.destination,
+          destination: convertAddressToBytes32(proposer.signingWallet.address),
           amount: ethers.constants.WeiPerEther.mul(100).toHexString(),
         },
         {
-          destination: joiner.destination,
+          destination: convertAddressToBytes32(joiner.signingWallet.address),
           amount: ethers.constants.Zero.toHexString(),
         },
       ],
@@ -374,6 +397,15 @@ async function defundChannel(
     isFinal5.signature,
     signState(_isFinal5, joiner.signingWallet.privateKey).signature,
   ];
+
+  const concludedEvent = new Promise((resolve, reject) => {
+    const listener = (from, to, amount, event) => {
+      joiner.log(`Caught the Concluded event`);
+      resolve(event);
+    };
+    nitroAdjudicator.once("Concluded", listener);
+  });
+
   const { gasUsed } = await (
     await nitroAdjudicator.concludePushOutcomeAndTransferAll(
       _isFinal5.turnNum,
@@ -387,6 +419,7 @@ async function defundChannel(
   ).wait();
   joiner.gasSpent += Number(gasUsed);
   joiner.log(`Spent ${gasUsed} gas, total ${joiner.gasSpent}`);
+  await concludedEvent;
 }
 
 function swap(outcome: Outcome) {
@@ -411,7 +444,7 @@ function swap(outcome: Outcome) {
 
 async function logBalances(...actors: Actor[]) {
   for await (const actor of actors) {
-    actor.log(`I have ${await actor.getLeftBalance()} ETH on the left chain`);
-    actor.log(`I have ${await actor.getRightBalance()} ETH on the right chain`);
+    actor.log(`I have ${await actor.getLeftBalance()} wei on the left chain`);
+    actor.log(`I have ${await actor.getRightBalance()} wei on the right chain`);
   }
 }
