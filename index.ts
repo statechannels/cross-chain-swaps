@@ -389,7 +389,7 @@ async function defundChannel(
   proposer.log(
     `I verified your unlock was valid; Here's a final state to help you withdraw on chain ${initialState.channel.chainId}`
   );
-  const _isFinal5: State = { ...initialState, isFinal: true };
+  const _isFinal5: State = { ...unlockState, isFinal: true };
   const isFinal5 = signState(_isFinal5, proposer.signingWallet.privateKey);
   // isFinal5 sent to joiner
   joiner.log("Countersigning and calling concludePushOutcomeAndTransferAll...");
