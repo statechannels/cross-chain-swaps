@@ -1,10 +1,10 @@
 import { BigNumber, Contract, ContractFactory, ethers } from "ethers";
 import ganache = require("ganache-core");
 import chalk = require("chalk");
-import { artifacts } from "@connext/vector-contracts";
+import { artifacts, WithdrawCommitment } from "@connext/vector-contracts";
 import { Vector } from "@connext/vector-protocol";
 import { CoreChannelState, CoreTransferState } from "@connext/vector-types";
-import { hashChannelCommitment } from "@connext/vector-utils";
+import { hashChannelCommitment, ChannelSigner } from "@connext/vector-utils";
 import { solidityKeccak256 } from "ethers/lib/utils";
 
 // See https://github.com/connext/vector/blob/main/modules/protocol/src/testing/integration/happy.spec.ts
@@ -152,11 +152,39 @@ const rightChain = new ethers.providers.JsonRpcProvider(
 
   // Now we want to withdraw on both chains
 
-  //   const leftVectorChannel = await new Contract(
-  //     leftChannelAddress,
-  //     artifacts.VectorChannel.abi,
-  //     leftChain.getSigner(0)
-  //   );
+  const leftVectorChannel = await new Contract(
+    leftCore.channelAddress,
+    artifacts.VectorChannel.abi,
+    leftChain.getSigner(0)
+  );
+
+  const commitment = new WithdrawCommitment(
+    leftCore.channelAddress,
+    executorWallet.address,
+    responderWallet.address,
+    responderWallet.address,
+    ethers.constants.AddressZero,
+    "1",
+    "1"
+  );
+
+  const aliceSig = await new ChannelSigner(
+    executorWallet.privateKey
+  ).signMessage(commitment.hashToSign());
+  const bobSig = await new ChannelSigner(
+    responderWallet.privateKey
+  ).signMessage(commitment.hashToSign());
+
+  const withdrawData = commitment.getWithdrawData();
+
+  const { gasUsed: gasUsed3 } = await (
+    await leftVectorChannel.withdraw(withdrawData, aliceSig, bobSig)
+  ).wait(); // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
+
+  responder.gasSpent += Number(gasUsed3);
+  responder.log(
+    `called VectorChannel.withdraw on left chain, spent ${gasUsed3} gas, total ${responder.gasSpent}`
+  );
 
   await logBalances(executor, responder);
 
@@ -216,11 +244,12 @@ async function createAndFundChannel(
   channelFactory: Contract,
   channelMasterCopy: Contract
 ) {
+  const { chainId } = await chain.getNetwork();
   const channelAddress = ethers.utils.getCreate2Address(
     channelFactory.address,
     solidityKeccak256(
       ["address", "address", "uint256"],
-      [executorWallet.address, responderWallet.address, left._chainId]
+      [proposer.signingWallet.address, joiner.signingWallet.address, chainId]
     ),
     solidityKeccak256(
       ["bytes"],
@@ -246,8 +275,8 @@ async function createAndFundChannel(
     nonce: 1,
     channelAddress: channelAddress, // depends on chainId
     // should have the to field filled out
-    alice: executorWallet.address,
-    bob: responderWallet.address,
+    alice: proposer.signingWallet.address,
+    bob: joiner.signingWallet.address,
     assetIds: [ethers.constants.AddressZero],
     balances: [{ amount: ["0x1"], to: [responderWallet.address] }],
     processedDepositsA: [],
@@ -277,21 +306,21 @@ async function createAndFundChannel(
   // Possible optimization:  couldn't she just send the deposit in with this createChannel call?
   const { gasUsed } = await (
     await channelFactory.createChannel(
-      executorWallet.address,
-      responderWallet.address
+      proposer.signingWallet.address,
+      joiner.signingWallet.address
     )
   ).wait(); // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
   // ideally we check that the new contract deployed at the address we expect
 
   proposer.gasSpent += Number(gasUsed);
   proposer.log(
-    `called ChannelFactory.createChannel on left chain, spent ${gasUsed} gas`
+    `called ChannelFactory.createChannel on chain ${chainId}, spent ${gasUsed} gas`
   );
 
   const { gasUsed: gasUsed2 } = await (
-    await leftChain.sendTransaction(
-      await executorWallet.signTransaction({
-        nonce: await leftChain.getTransactionCount(executorWallet.address),
+    await chain.sendTransaction(
+      await proposer.signingWallet.signTransaction({
+        nonce: await chain.getTransactionCount(proposer.signingWallet.address),
         value: core.balances[0].amount[0],
         to: channelAddress,
         gasLimit: 8e5,
@@ -301,7 +330,7 @@ async function createAndFundChannel(
 
   proposer.gasSpent += gasUsed2.toNumber();
   proposer.log(
-    `sent ETH to the channel on left chain, spent ${gasUsed2} gas, total ${proposer.gasSpent}`
+    `sent ETH to the channel on chain ${chainId}, spent ${gasUsed2} gas, total ${proposer.gasSpent}`
   );
 
   // TODO next Alice sends a deposit update in the channel. This is like a post fund setup (I think)
