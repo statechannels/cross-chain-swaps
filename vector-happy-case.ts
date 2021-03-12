@@ -276,35 +276,23 @@ async function createAndFundChannel(
   // https://github.com/connext/vector/blob/54f050202290769b0d672d362493b783610908dd/modules/protocol/src/testing/utils/channel.ts#L188
   // confused: it looks like Alice calls deposit AND does a regular transfer; Bob does just a transfer
   // https://github.com/connext/vector/blob/54f050202290769b0d672d362493b783610908dd/modules/protocol/src/testing/utils/channel.ts#L151-L186
-  // Alice creates the multisig and then deposits
-  // Possible optimization:  couldn't she just send the deposit in with this createChannel call?
+  // Alice creates the multisig and deposits in one tx
   const { gasUsed } = await (
-    await channelFactory.createChannel(
+    await channelFactory.createChannelAndDepositAlice(
       proposer.signingWallet.address,
-      joiner.signingWallet.address
+      joiner.signingWallet.address,
+      ethers.constants.AddressZero,
+      core.balances[0].amount[0],
+      {
+        value: core.balances[0].amount[0],
+      }
     )
   ).wait(); // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
   // ideally we check that the new contract deployed at the address we expect
 
   proposer.gasSpent += Number(gasUsed);
   proposer.log(
-    `called ChannelFactory.createChannel on chain ${chainId}, spent ${gasUsed} gas`
-  );
-
-  const { gasUsed: gasUsed2 } = await (
-    await chain.sendTransaction(
-      await proposer.signingWallet.signTransaction({
-        nonce: await chain.getTransactionCount(proposer.signingWallet.address),
-        value: core.balances[0].amount[0],
-        to: channelAddress,
-        gasLimit: 8e5,
-      })
-    )
-  ).wait();
-
-  proposer.gasSpent += gasUsed2.toNumber();
-  proposer.log(
-    `sent ETH to the channel on chain ${chainId}, spent ${gasUsed2} gas, total ${proposer.gasSpent}`
+    `called ChannelFactory.createChannelAndDepositAlice on chain ${chainId}, spent ${gasUsed} gas`
   );
 
   // TODO next Alice sends a deposit update in the channel. This is like a post fund setup (I think)
