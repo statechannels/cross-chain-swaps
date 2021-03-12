@@ -111,10 +111,7 @@ const rightChain = new ethers.providers.JsonRpcProvider(
     rightTransferRegistry,
   ] = await deployContractsToChain(rightChain);
 
-  // TODO next Alice sends a deposit update in the channel. This is like a post fund setup (I think)
-  // within vector client code, the amounts will be read off the chain
-
-  await createAndFundChannel(
+  const leftCore = await createAndFundChannel(
     leftChain,
     executor,
     responder,
@@ -122,17 +119,38 @@ const rightChain = new ethers.providers.JsonRpcProvider(
     leftChannelMasterCopy
   );
 
-  //   const leftConditionalTransfer: CoreTransferState = {
-  //     channelAddress: leftChannelAddress,
-  //     transferId: "todo",
-  //     transferDefinition: leftHashLock.address,
-  //     initiator: executorWallet.address,
-  //     responder: responderWallet.address,
-  //     assetId: ethers.constants.HashZero,
-  //     balance: { amount: ["0x1"], to: [executorWallet.address] },
-  //     transferTimeout: core.timeout,
-  //     initialStateHash: ethers.constants.HashZero, // TODO
-  //   };
+  const leftConditionalTransfer: CoreTransferState = {
+    channelAddress: leftCore.channelAddress,
+    transferId: "todo",
+    transferDefinition: leftHashLock.address,
+    initiator: executorWallet.address,
+    responder: responderWallet.address,
+    assetId: ethers.constants.HashZero,
+    balance: { amount: ["0x1"], to: [executorWallet.address] },
+    transferTimeout: leftCore.timeout,
+    initialStateHash: ethers.constants.HashZero, // TODO
+  };
+
+  // TODO sign and send this state.
+
+  const rightCore = await createAndFundChannel(
+    rightChain,
+    responder,
+    executor,
+    rightChannelFactory,
+    rightChannelMasterCopy
+  );
+
+  // given the longChannel is now funded and running
+  // the responder needs to incentivize the executor to do the swap
+  // TODO sign and send a rightConditionalTransfer
+
+  // TODO
+  // executor unlocks payment that benefits him
+  // responder decodes the preimage and unlocks the payment that benefits her
+  // both channels are collaboratively defunded
+
+  // Now we want to withdraw on both chains
 
   //   const leftVectorChannel = await new Contract(
   //     leftChannelAddress,
@@ -140,12 +158,6 @@ const rightChain = new ethers.providers.JsonRpcProvider(
   //     leftChain.getSigner(0)
   //   );
 
-  // given the longChannel is now funded and running
-  // the responder needs to incentivize the executor to do the swap
-
-  // executor unlocks payment that benefits him
-  // responder decodes the preimage and unlocks the payment that benefits her
-  // both channels are collaboratively defunded
   await logBalances(executor, responder);
 
   // teardown blockchains
@@ -285,12 +297,15 @@ async function createAndFundChannel(
         gasLimit: 8e5,
       })
     )
-  ).wait(); // TODO match value with channel
+  ).wait();
 
   proposer.gasSpent += gasUsed2.toNumber();
   proposer.log(
     `sent ETH to the channel on left chain, spent ${gasUsed2} gas, total ${proposer.gasSpent}`
   );
+
+  // TODO next Alice sends a deposit update in the channel. This is like a post fund setup (I think)
+  // within vector client code, the amounts will be read off the chain
   return core;
 }
 
