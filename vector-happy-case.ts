@@ -151,39 +151,12 @@ const rightChain = new ethers.providers.JsonRpcProvider(
   // both channels are collaboratively defunded
 
   // Now we want to withdraw on both chains
-
-  const leftVectorChannel = await new Contract(
-    leftCore.channelAddress,
-    artifacts.VectorChannel.abi,
-    leftChain.getSigner(0)
-  );
-
-  const commitment = new WithdrawCommitment(
-    leftCore.channelAddress,
-    executorWallet.address,
-    responderWallet.address,
-    responderWallet.address,
-    ethers.constants.AddressZero,
-    "1",
-    "1"
-  );
-
-  const aliceSig = await new ChannelSigner(
-    executorWallet.privateKey
-  ).signMessage(commitment.hashToSign());
-  const bobSig = await new ChannelSigner(
-    responderWallet.privateKey
-  ).signMessage(commitment.hashToSign());
-
-  const withdrawData = commitment.getWithdrawData();
-
-  const { gasUsed: gasUsed3 } = await (
-    await leftVectorChannel.withdraw(withdrawData, aliceSig, bobSig)
-  ).wait(); // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
-
-  responder.gasSpent += Number(gasUsed3);
-  responder.log(
-    `called VectorChannel.withdraw on left chain, spent ${gasUsed3} gas, total ${responder.gasSpent}`
+  await defundChannel(leftCore.channelAddress, executor, responder, leftChain);
+  await defundChannel(
+    rightCore.channelAddress,
+    responder,
+    executor,
+    rightChain
   );
 
   await logBalances(executor, responder);
@@ -336,6 +309,47 @@ async function createAndFundChannel(
   // TODO next Alice sends a deposit update in the channel. This is like a post fund setup (I think)
   // within vector client code, the amounts will be read off the chain
   return core;
+}
+async function defundChannel(
+  channelAddress: string,
+  proposer: Actor,
+  joiner: Actor,
+  chain: ethers.providers.JsonRpcProvider
+) {
+  const { chainId } = await chain.getNetwork();
+  const channel = await new Contract(
+    channelAddress,
+    artifacts.VectorChannel.abi,
+    chain.getSigner(0)
+  );
+
+  const commitment = new WithdrawCommitment(
+    channelAddress,
+    proposer.signingWallet.address,
+    joiner.signingWallet.address,
+    joiner.signingWallet.address,
+    ethers.constants.AddressZero,
+    "1",
+    "1"
+  );
+
+  const aliceSig = await new ChannelSigner(
+    proposer.signingWallet.privateKey
+  ).signMessage(commitment.hashToSign());
+  const bobSig = await new ChannelSigner(
+    joiner.signingWallet.privateKey
+  ).signMessage(commitment.hashToSign());
+
+  const withdrawData = commitment.getWithdrawData();
+
+  const { gasUsed: gasUsed3 } = await (
+    await channel.withdraw(withdrawData, aliceSig, bobSig)
+  ).wait(); // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
+
+  joiner.gasSpent += Number(gasUsed3);
+  joiner.log(
+    `called VectorChannel.withdraw on chain ${chainId} spent ${gasUsed3} gas, total ${joiner.gasSpent}`
+  );
 }
 
 async function logBalances(...actors: Actor[]) {
