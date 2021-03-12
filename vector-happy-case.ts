@@ -2,9 +2,18 @@ import { BigNumber, Contract, ContractFactory, ethers } from "ethers";
 import ganache = require("ganache-core");
 import chalk = require("chalk");
 import { artifacts } from "@connext/vector-contracts";
+import { Vector } from "@connext/vector-protocol";
+import { CoreChannelState } from "@connext/vector-types";
+import { hashChannelCommitment } from "@connext/vector-utils";
+import { solidityKeccak256 } from "ethers/lib/utils";
+
+// See https://github.com/connext/vector/blob/main/modules/protocol/src/testing/integration/happy.spec.ts
+// Will it be easier to use vector class instances (wallets)? Or try and go state-by-state as we did with nitro?
+// @connext do not really export much from their protocol. It's all only accesible via the Vector class.
 
 // Spin up two instances of ganache.
-// Deploy NitroAdjudicator, ETHAssetHolder, HashLock to both instances
+// alice is assumed to be a high-fidelity user (has gas in their signing address) and bob is assumed to be a low-fidelity user (doesn't always have gas in their signing address).
+// Bob is the user. Alice is the node.
 // Run an atomic swap between the chains (Happy Case, Direct Funding)
 // Record time taken and gas consumed
 // Explore unhappy cases
@@ -93,12 +102,108 @@ const rightChain = new ethers.providers.JsonRpcProvider(
     leftChannelMasterCopy,
     leftChannelFactory,
     leftHashLock,
+    leftTransferRegistry,
   ] = await deployContractsToChain(leftChain);
   const [
     rightChannelMasterCopy,
     rightChannelFactory,
     rightHashLock,
+    rightTransferRegistry,
   ] = await deployContractsToChain(rightChain);
+
+  // Alice sets up the channel
+  const leftChannelAddress = ethers.utils.getCreate2Address(
+    leftChannelFactory.address,
+    solidityKeccak256(
+      ["address", "address", "uint256"],
+      [executorWallet.address, responderWallet.address, left._chainId]
+    ),
+    solidityKeccak256(
+      ["bytes"],
+      [getMinimalProxyInitCode(leftChannelMasterCopy.address)]
+    )
+  );
+
+  console.log(leftChannelAddress);
+
+  const leftSetupParams = {
+    counterpartyIdentifier: "responder-identifier", //TODO
+    timeout: (60 * 60 * 24 * 2).toString(), // 48 hrs is default
+    networkContext: {
+      chainId: left._chainId,
+      channelFactoryAddress: leftChannelFactory.address,
+      transferRegistryAddress: leftTransferRegistry.address,
+    },
+  };
+
+  const participants = [executorWallet.address, responderWallet.address];
+
+  const core: CoreChannelState = {
+    nonce: 1,
+    channelAddress: leftChannelAddress, // depends on chainId
+    // should have the to field filled out
+    alice: executorWallet.address,
+    bob: responderWallet.address,
+    assetIds: [ethers.constants.AddressZero],
+    balances: [{ amount: ["0x1"], to: [responderWallet.address] }],
+    processedDepositsA: [],
+    processedDepositsB: [],
+    defundNonces: [],
+    timeout: (60 * 60 * 24 * 2).toString(), // 48 hrs is default,
+    merkleRoot: "",
+  };
+
+  // TODO signatures
+  //   const commitment = {
+  //     core,
+  //     aliceSignature: await executorWallet.signMessage(
+  //       hashChannelCommitment(core)
+  //     ),
+  //     // now send to Bob, and get his countersignature
+  //     bobSignature: await responderWallet.signMessage(
+  //       hashChannelCommitment(core)
+  //     ),
+  //   };
+
+  // Bob does not desposit, because there are no funds for him in the channel
+  // https://github.com/connext/vector/blob/54f050202290769b0d672d362493b783610908dd/modules/protocol/src/testing/utils/channel.ts#L188
+  // confused: it looks like Alice calls deposit AND does a regular transfer; Bob does just a transfer
+  // https://github.com/connext/vector/blob/54f050202290769b0d672d362493b783610908dd/modules/protocol/src/testing/utils/channel.ts#L151-L186
+  const { gasUsed } = await (
+    await leftChannelFactory.createChannel(
+      executorWallet.address,
+      responderWallet.address
+    )
+  ).wait(); // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
+  // ideally we check that the new contract deployed at the address we expect
+
+  executor.gasSpent += Number(gasUsed);
+  executor.log(
+    `called ChannelFactory.createChannel on left chain, spent ${gasUsed} gas`
+  );
+
+  const { gasUsed: gasUsed2 } = await (
+    await leftChain.sendTransaction(
+      await executorWallet.signTransaction({
+        nonce: await leftChain.getTransactionCount(executorWallet.address),
+        value: 1,
+        to: leftChannelAddress,
+        gasLimit: 8e5,
+      })
+    )
+  ).wait(); // TODO match value with channel
+
+  executor.gasSpent += gasUsed2.toNumber();
+  executor.log(
+    `sent ETH to the channel on left chain, spent ${gasUsed2} gas, total ${executor.gasSpent}`
+  );
+
+  const leftVectorChannel = await new Contract(
+    leftChannelAddress,
+    artifacts.VectorChannel.abi,
+    leftChain.getSigner(0)
+  );
+  // Alice deposits
 
   // given the longChannel is now funded and running
   // the responder needs to incentivize the executor to do the swap
@@ -144,9 +249,18 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
     deployer
   ).deploy();
 
-  return [channelMasterCopy, channelFactory, hashLock].map((contract) =>
-    contract.connect(chain.getSigner(0))
-  );
+  const transferRegistry = await new ContractFactory(
+    artifacts.TransferRegistry.abi,
+    artifacts.TransferRegistry.bytecode,
+    deployer
+  ).deploy();
+
+  return [
+    channelMasterCopy,
+    channelFactory,
+    hashLock,
+    transferRegistry,
+  ].map((contract) => contract.connect(chain.getSigner(0)));
 }
 
 async function logBalances(...actors: Actor[]) {
@@ -163,3 +277,9 @@ async function logBalances(...actors: Actor[]) {
     );
   }
 }
+
+// functions pulled out of @connext/vector-utils
+export const getMinimalProxyInitCode = (mastercopyAddress: string): string =>
+  `0x3d602d80600a3d3981f3363d3d373d3d3d363d73${mastercopyAddress
+    .toLowerCase()
+    .replace(/^0x/, "")}5af43d82803e903d91602b57fd5bf3`;
