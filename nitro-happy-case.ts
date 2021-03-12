@@ -16,6 +16,7 @@ import {
   convertAddressToBytes32,
 } from "@statechannels/nitro-protocol";
 import chalk = require("chalk");
+import { SWAP_AMOUNT } from "./constants";
 
 // Spin up two instances of ganache.
 // Deploy NitroAdjudicator, ETHAssetHolder, HashLock to both instances
@@ -289,11 +290,11 @@ function createHashLockChannel(
       allocationItems: [
         {
           destination: convertAddressToBytes32(proposer.signingWallet.address),
-          amount: ethers.constants.WeiPerEther.mul(80).toHexString(),
+          amount: SWAP_AMOUNT,
         },
         {
           destination: convertAddressToBytes32(joiner.signingWallet.address),
-          amount: ethers.constants.Zero.toHexString(),
+          amount: SWAP_AMOUNT,
         },
       ],
     },

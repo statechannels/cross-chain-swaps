@@ -6,6 +6,7 @@ import { Vector } from "@connext/vector-protocol";
 import { CoreChannelState, CoreTransferState } from "@connext/vector-types";
 import { hashChannelCommitment, ChannelSigner } from "@connext/vector-utils";
 import { solidityKeccak256 } from "ethers/lib/utils";
+import { SWAP_AMOUNT } from "./constants";
 
 // See https://github.com/connext/vector/blob/main/modules/protocol/src/testing/integration/happy.spec.ts
 // Will it be easier to use vector class instances (wallets)? Or try and go state-by-state as we did with nitro?
@@ -251,7 +252,7 @@ async function createAndFundChannel(
     alice: proposer.signingWallet.address,
     bob: joiner.signingWallet.address,
     assetIds: [ethers.constants.AddressZero],
-    balances: [{ amount: ["0x1"], to: [responderWallet.address] }],
+    balances: [{ amount: [SWAP_AMOUNT], to: [responderWallet.address] }],
     processedDepositsA: [],
     processedDepositsB: [],
     defundNonces: [],
@@ -329,7 +330,7 @@ async function defundChannel(
     joiner.signingWallet.address,
     joiner.signingWallet.address,
     ethers.constants.AddressZero,
-    "1",
+    SWAP_AMOUNT,
     "1"
   );
 
