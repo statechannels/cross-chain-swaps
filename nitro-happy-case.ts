@@ -306,7 +306,7 @@ function createHashLockChannel(
         },
         {
           destination: convertAddressToBytes32(joiner.signingWallet.address),
-          amount: SWAP_AMOUNT,
+          amount: "0x0",
         },
       ],
     },
