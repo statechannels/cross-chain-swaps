@@ -1,4 +1,4 @@
-import { BigNumber, Contract, ContractFactory, ethers } from "ethers";
+import { Contract, ContractFactory, ethers } from "ethers";
 import ganache = require("ganache-core");
 import {
   ContractArtifacts,
@@ -265,8 +265,9 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   ).deploy();
 
   const token = await ContractFactory.fromSolidity(
-    TestContractArtifacts.TokenArtifact
-  ).deploy();
+    TestContractArtifacts.TokenArtifact,
+    deployer
+  ).deploy(await chain.getSigner(0).getAddress());
 
   return [nitroAdjudicator, eTHAssetHolder, hashLock, token].map((contract) =>
     contract.connect(chain.getSigner(0))
