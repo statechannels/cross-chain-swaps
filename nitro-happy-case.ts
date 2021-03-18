@@ -20,7 +20,7 @@ import chalk = require("chalk");
 import { SWAP_AMOUNT } from "./constants";
 
 // Spin up two instances of ganache.
-// Deploy NitroAdjudicator, ETHAssetHolder, HashLock to both instances
+// Deploy NitroAdjudicator, ERC20AssetHolder, HashLock to both instances
 // Run an atomic swap between the chains (Happy Case, Direct Funding)
 // Record time taken and gas consumed
 // Explore unhappy cases
@@ -112,48 +112,48 @@ const correctPreImage: HashLockedSwapData = {
 // *****
 
 (async function () {
+  // SETUP CONTRACTS ON BOTH CHAINS
+  // Deploy the contracts to chain, and then reconnect them to their respective signers
+  // for the rest of the interactions
+  const [
+    leftNitroAdjudicator,
+    leftERC20AssetHolder,
+    leftHashLock,
+    leftToken,
+  ] = await deployContractsToChain(leftChain);
+  const [
+    rightNitroAdjudicator,
+    rightERC20AssetHolder,
+    rightHashLock,
+    rightToken,
+  ] = await deployContractsToChain(rightChain);
+
   const executor: Actor = {
     signingWallet: executorWallet,
     log: (s: string) => console.log(chalk.keyword("orangered")("> " + s)),
     gasSpent: 0,
     getLeftBalance: async () =>
-      await leftChain.getBalance(executorWallet.address),
+      await leftToken.balanceOf(executorWallet.address),
     getRightBalance: async () =>
-      await rightChain.getBalance(executorWallet.address),
+      await rightToken.balanceOf(executorWallet.address),
   };
   const responder: Actor = {
     signingWallet: responderWallet,
     log: (s: string) => console.log(chalk.keyword("gray")("< " + s)),
     gasSpent: 0,
     getLeftBalance: async () =>
-      await leftChain.getBalance(responderWallet.address),
+      await leftToken.balanceOf(responderWallet.address),
     getRightBalance: async () =>
-      await rightChain.getBalance(responderWallet.address),
+      await rightToken.balanceOf(responderWallet.address),
   };
 
   await logBalances(executor, responder);
-
-  // SETUP CONTRACTS ON BOTH CHAINS
-  // Deploy the contracts to chain, and then reconnect them to their respective signers
-  // for the rest of the interactions
-  const [
-    leftNitroAdjudicator,
-    leftETHAssetHolder,
-    leftHashLock,
-    leftToken,
-  ] = await deployContractsToChain(leftChain);
-  const [
-    rightNitroAdjudicator,
-    rightETHAssetHolder,
-    rightHashLock,
-    rightToken,
-  ] = await deployContractsToChain(rightChain);
 
   const _PreFund0 = createHashLockChannel(
     left._chainId,
     60,
     leftHashLock.address,
-    leftETHAssetHolder.address,
+    leftERC20AssetHolder.address,
     executor,
     responder,
     ethers.utils.sha256(preImage)
@@ -161,7 +161,8 @@ const correctPreImage: HashLockedSwapData = {
 
   // exchanges setup states and funds on left chain
   const longChannel = await fundChannel(
-    leftETHAssetHolder,
+    leftERC20AssetHolder,
+    leftToken,
     _PreFund0,
     executor,
     responder
@@ -173,18 +174,21 @@ const correctPreImage: HashLockedSwapData = {
     right._chainId,
     30,
     rightHashLock.address,
-    rightETHAssetHolder.address,
+    rightERC20AssetHolder.address,
     responder,
     executor,
     decodeHashLockedSwapData(_PreFund0.appData).h
   );
 
   const shortChannel = await fundChannel(
-    rightETHAssetHolder,
+    rightERC20AssetHolder,
+    rightToken,
     _preFund0,
     responder,
     executor
   );
+
+  // await logBalances(executor, responder); // uncomment this to check deposit was legit
 
   // executor unlocks payment that benefits him
   const _unlock4: State = {
@@ -254,22 +258,22 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
     deployer
   ).deploy();
 
-  const eTHAssetHolder = await ContractFactory.fromSolidity(
-    ContractArtifacts.EthAssetHolderArtifact,
+  const token = await ContractFactory.fromSolidity(
+    TestContractArtifacts.TokenArtifact,
     deployer
-  ).deploy(nitroAdjudicator.address);
+  ).deploy(await chain.getSigner(0).getAddress());
+
+  const erc20AssetHolder = await ContractFactory.fromSolidity(
+    ContractArtifacts.Erc20AssetHolderArtifact,
+    deployer
+  ).deploy(nitroAdjudicator.address, token.address);
 
   const hashLock = await ContractFactory.fromSolidity(
     ContractArtifacts.HashLockedSwapArtifact,
     deployer
   ).deploy();
 
-  const token = await ContractFactory.fromSolidity(
-    TestContractArtifacts.TokenArtifact,
-    deployer
-  ).deploy(await chain.getSigner(0).getAddress());
-
-  return [nitroAdjudicator, eTHAssetHolder, hashLock, token].map((contract) =>
+  return [nitroAdjudicator, erc20AssetHolder, hashLock, token].map((contract) =>
     contract.connect(chain.getSigner(0))
   );
 }
@@ -320,7 +324,8 @@ function createHashLockChannel(
 }
 
 async function fundChannel(
-  eTHAssetHolder: ethers.Contract,
+  erc20AssetHolder: ethers.Contract,
+  token: ethers.Contract,
   initialState: State,
   proposer: Actor,
   joiner: Actor
@@ -358,7 +363,7 @@ async function fundChannel(
         resolve(event);
       }
     };
-    eTHAssetHolder.once("Deposited", listener);
+    erc20AssetHolder.once("Deposited", listener);
   });
 
   // not shown: PreFund1 is delivered to joiner
@@ -371,14 +376,23 @@ async function fundChannel(
   const value = (initialState.outcome[0] as AllocationAssetOutcome)
     .allocationItems[0].amount;
 
+  // proposer increases the allowance of the ERC20Assetholder
+
+  const { gasUsed: increaseAllowanceGas } = await (
+    await token.increaseAllowance(erc20AssetHolder.address, value)
+  ).wait();
+
+  proposer.gasSpent += Number(increaseAllowanceGas);
+  proposer.log(
+    "spent " + increaseAllowanceGas + " gas increasing token allowance"
+  );
+
   // Proposer funds channel (costs gas)
   const { gasUsed: depositGas } = await (
-    await eTHAssetHolder.deposit(channelId, 0, value, {
-      value,
-    })
+    await erc20AssetHolder.deposit(channelId, 0, value)
   ).wait();
   proposer.gasSpent += Number(depositGas);
-  proposer.log("spent " + proposer.gasSpent + " gas");
+  proposer.log("spent " + depositGas + " gas depositing tokens");
 
   await joinerToReactToDeposit;
 
@@ -406,7 +420,7 @@ async function defundChannel(
   const _isFinal5: State = { ...unlockState, isFinal: true };
   const isFinal5 = signState(_isFinal5, proposer.signingWallet.privateKey);
   // isFinal5 sent to joiner
-  joiner.log("Countersigning and calling concludePushOutcomeAndTransferAll...");
+  joiner.log("Countersigning...");
   const sigs = [
     isFinal5.signature,
     signState(_isFinal5, joiner.signingWallet.privateKey).signature,
@@ -432,11 +446,13 @@ async function defundChannel(
     )
   ).wait();
   joiner.gasSpent += Number(gasUsed);
-  joiner.log(`Spent ${gasUsed} gas, total ${joiner.gasSpent}`);
+  joiner.log(
+    `Spent ${gasUsed} gas calling concludePushOutcomeAndTransferAll, total ${joiner.gasSpent}`
+  );
   await concludedEvent;
 }
 
-function swap(outcome: Outcome) {
+function swap(outcome: Outcome): Outcome {
   if (!("allocationItems" in outcome[0])) throw Error;
   const swappedOutome: AllocationAssetOutcome[] = [
     {
@@ -461,12 +477,12 @@ async function logBalances(...actors: Actor[]) {
     actor.log(
       `I have ${(
         await actor.getLeftBalance()
-      ).toString()} wei on the left chain`
+      ).toString()} tokens on the left chain`
     );
     actor.log(
       `I have ${(
         await actor.getRightBalance()
-      ).toString()} wei on the right chain`
+      ).toString()} tokens on the right chain`
     );
   }
 }
