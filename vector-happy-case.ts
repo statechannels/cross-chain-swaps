@@ -112,7 +112,7 @@ const rightChain = new ethers.providers.JsonRpcProvider(
     rightTransferRegistry,
   ] = await deployContractsToChain(rightChain);
 
-  const leftCore = await createAndFundChannel(
+  const leftCore = await fundChannel(
     leftChain,
     executor,
     responder,
@@ -152,12 +152,20 @@ const rightChain = new ethers.providers.JsonRpcProvider(
   // both channels are collaboratively defunded
 
   // Now we want to withdraw on both chains
-  await defundChannel(leftCore.channelAddress, executor, responder, leftChain);
+  await createAndDefundChannel(
+    leftCore.channelAddress,
+    executor,
+    responder,
+    leftChain,
+    leftChannelFactory,
+    leftChannelMasterCopy
+  );
   await defundChannel(
     rightCore.channelAddress,
     responder,
     executor,
-    rightChain
+    rightChain,
+    responder
   );
 
   await logBalances(executor, responder);
@@ -210,6 +218,62 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
     hashLock,
     transferRegistry,
   ].map((contract) => contract.connect(chain.getSigner(0)));
+}
+/**
+ * Send assets to the not-yet-deployed contract (As Bob)
+ * @param chain
+ * @param proposer
+ * @param joiner
+ * @param channelFactory
+ * @param channelMasterCopy
+ */
+async function fundChannel(
+  chain: ethers.providers.JsonRpcProvider,
+  proposer: Actor,
+  joiner: Actor,
+  channelFactory: Contract,
+  channelMasterCopy: Contract
+) {
+  const { chainId } = await chain.getNetwork();
+  const channelAddress = ethers.utils.getCreate2Address(
+    channelFactory.address,
+    solidityKeccak256(
+      ["address", "address", "uint256"],
+      [proposer.signingWallet.address, joiner.signingWallet.address, chainId]
+    ),
+    solidityKeccak256(
+      ["bytes"],
+      [getMinimalProxyInitCode(channelMasterCopy.address)]
+    )
+  );
+
+  const core: CoreChannelState = {
+    nonce: 1,
+    channelAddress: channelAddress, // depends on chainId
+    // should have the to field filled out
+    alice: joiner.signingWallet.address,
+    bob: proposer.signingWallet.address,
+    assetIds: [ethers.constants.AddressZero],
+    balances: [{ amount: [SWAP_AMOUNT], to: [responderWallet.address] }],
+    processedDepositsA: [],
+    processedDepositsB: [],
+    defundNonces: [],
+    timeout: (60 * 60 * 24 * 2).toString(), // 48 hrs is default,
+    merkleRoot: "",
+  };
+
+  const { gasUsed } = await (
+    await chain.getSigner().sendTransaction({
+      to: channelAddress,
+      value: core.balances[0].amount[0],
+    })
+  ).wait(); // Note that we ignore who *actually* sent the transaction, but attribute it to the proposer here
+
+  proposer.gasSpent += Number(gasUsed);
+  proposer.log(
+    `sent funds to contract on chain ${chainId}, spent ${gasUsed} gas`
+  );
+  return core;
 }
 async function createAndFundChannel(
   chain: ethers.providers.JsonRpcProvider,
@@ -303,9 +367,66 @@ async function defundChannel(
   channelAddress: string,
   proposer: Actor,
   joiner: Actor,
-  chain: ethers.providers.JsonRpcProvider
+  chain: ethers.providers.JsonRpcProvider,
+  gasPayer: Actor
 ) {
   const { chainId } = await chain.getNetwork();
+  const channel = await new Contract(
+    channelAddress,
+    artifacts.VectorChannel.abi,
+    chain.getSigner(0)
+  );
+
+  const commitment = new WithdrawCommitment(
+    channelAddress,
+    proposer.signingWallet.address,
+    joiner.signingWallet.address,
+    joiner.signingWallet.address,
+    ethers.constants.AddressZero,
+    SWAP_AMOUNT,
+    "1"
+  );
+
+  const aliceSig = await new ChannelSigner(
+    proposer.signingWallet.privateKey
+  ).signMessage(commitment.hashToSign());
+  const bobSig = await new ChannelSigner(
+    joiner.signingWallet.privateKey
+  ).signMessage(commitment.hashToSign());
+
+  const withdrawData = commitment.getWithdrawData();
+
+  const { gasUsed: gasUsed3 } = await (
+    await channel.withdraw(withdrawData, aliceSig, bobSig)
+  ).wait(); // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
+
+  gasPayer.gasSpent += Number(gasUsed3);
+  gasPayer.log(
+    `called VectorChannel.withdraw on chain ${chainId} spent ${gasUsed3} gas, total ${gasPayer.gasSpent}`
+  );
+}
+async function createAndDefundChannel(
+  channelAddress: string,
+  proposer: Actor,
+  joiner: Actor,
+  chain: ethers.providers.JsonRpcProvider,
+  channelFactory: Contract,
+  channelMasterCopy: Contract
+) {
+  const { chainId } = await chain.getNetwork();
+
+  const { gasUsed } = await (
+    await channelFactory.createChannel(
+      proposer.signingWallet.address,
+      joiner.signingWallet.address
+    )
+  ).wait();
+
+  joiner.gasSpent += Number(gasUsed);
+  joiner.log(
+    `called VectorChannel.createChannel on chain ${chainId} spent ${gasUsed} gas, total ${joiner.gasSpent}`
+  );
+
   const channel = await new Contract(
     channelAddress,
     artifacts.VectorChannel.abi,
