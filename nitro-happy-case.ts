@@ -266,7 +266,7 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
 
   const token = await ContractFactory.fromSolidity(
     TestContractArtifacts.TokenArtifact
-  );
+  ).deploy();
 
   return [nitroAdjudicator, eTHAssetHolder, hashLock, token].map((contract) =>
     contract.connect(chain.getSigner(0))
