@@ -2,6 +2,7 @@ import { BigNumber, Contract, ContractFactory, ethers } from "ethers";
 import ganache = require("ganache-core");
 import {
   ContractArtifacts,
+  TestContractArtifacts,
   Bytes32,
   State,
   Channel,
@@ -139,11 +140,13 @@ const correctPreImage: HashLockedSwapData = {
     leftNitroAdjudicator,
     leftETHAssetHolder,
     leftHashLock,
+    leftToken,
   ] = await deployContractsToChain(leftChain);
   const [
     rightNitroAdjudicator,
     rightETHAssetHolder,
     rightHashLock,
+    rightToken,
   ] = await deployContractsToChain(rightChain);
 
   const _PreFund0 = createHashLockChannel(
@@ -153,7 +156,7 @@ const correctPreImage: HashLockedSwapData = {
     leftETHAssetHolder.address,
     executor,
     responder,
-    ethers.utils.keccak256(preImage)
+    ethers.utils.sha256(preImage)
   );
 
   // exchanges setup states and funds on left chain
@@ -257,11 +260,15 @@ async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   ).deploy(nitroAdjudicator.address);
 
   const hashLock = await ContractFactory.fromSolidity(
-    ContractArtifacts.HashLockedSwap,
+    ContractArtifacts.HashLockedSwapArtifact,
     deployer
   ).deploy();
 
-  return [nitroAdjudicator, eTHAssetHolder, hashLock].map((contract) =>
+  const token = await ContractFactory.fromSolidity(
+    TestContractArtifacts.TokenArtifact
+  );
+
+  return [nitroAdjudicator, eTHAssetHolder, hashLock, token].map((contract) =>
     contract.connect(chain.getSigner(0))
   );
 }
