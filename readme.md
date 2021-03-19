@@ -1,48 +1,36 @@
 # Cross-chain swaps with state channels
 
-## Minimum gas costs
+This repo contains scripts that run atomic asset swapping between two local blockchains, using a hashlock approach.
+See [this presentation](https://docs.google.com/presentation/d/1vpH7qXwYqnhkwgjTvZQUyZHk91BsJsth0aJas-ikpgE/edit#slide=id.gbe5b77ad24_0_24) for an overview.
 
-Each of (Executor, Responder) must
+To install dependencies, run `yarn` (install if necessary).
 
-- lock up their funds on one chain (at least 21K gas to move funds in)
-- withdraw funds on the other chain (at least 21K gas to move funds out)
+In [common/two-chain-setup.ts](./common/two-chain-setup.ts), there are functions that can be used to start two blockchains, and an `Executor` and `Responder` class representing two actors, each having an externally owned account on each chain and owning some tokens on just one chain or the other (initially). These actors will track the amout of gas expended during the swaps, and their token balances on ecah chain.
 
-There's some more gas that needs to be spent by someone, to ensure the locked funds are safe.
-There must be some storage for each channel, to record the funds locked up (per participant). Thats 20K to write when locking up, and 800 to read when unlocking. (There could be some refund happening when the channel is finished).
+The approach taken here is to bypass the state channel wallets entirely; this avoids the need to manage any runtime dependencies such as a database or messaging system.
 
-There's also a minimum of two signature recoveries (ECRECOVER 3K gas each = 6K) required when unlocking, and at least one hash to calculate. So we go up K at least.
+## Vector protocol
 
-All costs will rise if we consider tokens (e.g. ERC20) instead of ETH.
+[Connext](https://connext.network/) have made cross-chain swaps their main focus, and are rolling out a network of liquidity pools to facilitate that.
 
-https://ethgastable.info/
+In [vector-atomic-swap/happy-case.ts](./vector-atomic-swap/happy-case.ts), there is a typescript script which will setup the two chains, deploy the relevant contacts to both chains, and fund/defund channels to execute the swap. Note that the state channel message passing part, plus any checks that should be done in a real application, is currently incomplete.
 
-## With nitro protocol
+Helper functions (specific to vector protocol) are located in `helpers.ts`.
 
-Funds lockup costs 49K, which is quite close to the lower bound for locking up securely (21K + 20K). There's some more gas spent on checks, event emission, and read-then-write flow for safely depositing.
+Executing `yarn go-vector` will execute the script with ts-node. You should see color-coded output detailing the steps that happen and the gas expended.
 
-Unlocking costs 104K. This is due to
+## Nitro protocol
 
-- check on current finalization status in adjudicator (800)
-- much rehashing
-- setting finalization status in adjudicator (20K)
-- much abi-decoding
+[Connext](https://connext.network/) have made cross-chain swaps their main focus, and are rolling out a network of liquidity pools to facilitate that.
 
-- delegate call: (I think?)
-- read holdings in asset holder ()
-- set holdings (20K)
+In [nitro-atomic-swap/happy-case.ts](./nitro-atomic-swap/happy-case.ts), there is a script which will setup the two chains, deploy the relevant contacts to both chains, and fund/defund channels to execute the swap. Note that the state channel message passing part, plus any checks that should be done in a real application, is only partially complete.
 
-## With vector protocol
+Helper functions (specific to nitro protocol) are located in `helpers.ts`.
 
-Funds lockup costs 155K. The storage part of the lockup involves deploying a new contract via a proxy. It costs at least 32K (for CREATE or CREATE2 in this instance) to deploy a contract, plus an amount that depends on the contract bytecode size.
+Executing `yarn go-nitro` will execute the script with ts-node. You should see color-coded output detailing the steps that happen and the gas expended.
 
-The nice thing about CREATE2 is that other participants don't need to call a function to deposit funds. But that is pretty useless for atomic swaps, since only one person deposits per channel anyway.
+## Future directions
 
-There's a separate transaction for depositing the actual ETH, which looks like it might not be required. However, using `createChannelAndDepositAlice` seems to require _more_ gas (166526) than just `createChannel` followed by a regular tx.
-
-I see some txs on etherscan that are for the channel factory contract and use 166538 gas.
-See
-https://kovan.etherscan.io/tx/0x03390bcfa5187ddf1ae74ba97fe86538cfbb21fca993e1ece074c6b2bd1c1a5e
-
-I think the reason for this is that the first number I quoted above, is not a safe deposit for Alice: she does actually need to call a method (`depositAlice`) to deposit and I hadn't taken that into account.
-
-## With both vector an nitro?
+- Complete the off-chain part of the swap in both protocols
+- Explore unhappy paths where one or the other actor backs out of the swap
+- Explore the security of the swap by trying to have one actor steal the other's coins.
