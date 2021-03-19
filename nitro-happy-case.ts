@@ -17,7 +17,17 @@ import {
   convertAddressToBytes32,
 } from "@statechannels/nitro-protocol";
 import chalk = require("chalk");
-import { SWAP_AMOUNT } from "./constants";
+import { LEFT_CHAIN_ID, RIGHT_CHAIN_ID, SWAP_AMOUNT } from "./constants";
+import { spinUpChains } from "./two-chain-setup";
+
+const {
+  executorWallet,
+  responderWallet,
+  deployerWallet,
+  leftChain,
+  rightChain,
+  tearDownChains,
+} = spinUpChains();
 
 // Spin up two instances of ganache.
 // Deploy NitroAdjudicator, ERC20AssetHolder, HashLock to both instances
@@ -25,60 +35,6 @@ import { SWAP_AMOUNT } from "./constants";
 // Record time taken and gas consumed
 // Explore unhappy cases
 // Explore off-chain funding use case
-
-const executorWallet = ethers.Wallet.createRandom();
-const responderWallet = ethers.Wallet.createRandom();
-const deployerWallet = ethers.Wallet.createRandom(); // to deploy contracts
-
-const left = {
-  gasPrice: ethers.constants.One.toHexString(),
-  port: 9001,
-  _chainId: 66,
-  _chainIdRpc: 66,
-  accounts: [
-    {
-      secretKey: executorWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
-    },
-    {
-      secretKey: deployerWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
-    },
-  ],
-};
-const leftServer = (ganache as any).server(left);
-leftServer.listen(left.port, async (err) => {
-  if (err) throw err;
-  console.log(`ganache listening on port ${left.port}...`);
-});
-const leftChain = new ethers.providers.JsonRpcProvider(
-  `http://localhost:${left.port}`
-);
-
-const right = {
-  gasPrice: ethers.constants.One.toHexString(),
-  port: 9002,
-  _chainId: 99,
-  _chainIdRpc: 99,
-  accounts: [
-    {
-      secretKey: responderWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
-    },
-    {
-      secretKey: deployerWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
-    },
-  ],
-};
-const rightServer = (ganache as any).server(right);
-rightServer.listen(right.port, async (err) => {
-  if (err) throw err;
-  console.log(`ganache listening on port ${right.port}...`);
-});
-const rightChain = new ethers.providers.JsonRpcProvider(
-  `http://localhost:${right.port}`
-);
 
 // Utilities
 // TODO: move to a src file
@@ -150,7 +106,7 @@ const correctPreImage: HashLockedSwapData = {
   await logBalances(executor, responder);
 
   const _PreFund0 = createHashLockChannel(
-    left._chainId,
+    LEFT_CHAIN_ID,
     60,
     leftHashLock.address,
     leftERC20AssetHolder.address,
@@ -171,7 +127,7 @@ const correctPreImage: HashLockedSwapData = {
   // given the longChannel is now funded and running
   // the responder needs to incentivize the executor to do the swap
   const _preFund0 = createHashLockChannel(
-    right._chainId,
+    RIGHT_CHAIN_ID,
     30,
     rightHashLock.address,
     rightERC20AssetHolder.address,
@@ -237,8 +193,7 @@ const correctPreImage: HashLockedSwapData = {
   await logBalances(executor, responder);
 
   // teardown blockchains
-  await leftServer.close();
-  await rightServer.close();
+  await tearDownChains();
 })();
 
 interface Actor {

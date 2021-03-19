@@ -1,13 +1,21 @@
-import { BigNumber, Contract, ContractFactory, ethers } from "ethers";
-import ganache = require("ganache-core");
+import { Contract, ContractFactory, ethers } from "ethers";
 import chalk = require("chalk");
 import { artifacts, WithdrawCommitment } from "@connext/vector-contracts";
-import { Vector } from "@connext/vector-protocol";
 import { CoreChannelState, CoreTransferState } from "@connext/vector-types";
-import { hashChannelCommitment, ChannelSigner } from "@connext/vector-utils";
+import { ChannelSigner } from "@connext/vector-utils";
 import { solidityKeccak256 } from "ethers/lib/utils";
 import { SWAP_AMOUNT } from "./constants";
 import { TestContractArtifacts } from "@statechannels/nitro-protocol";
+import { spinUpChains } from "./two-chain-setup";
+
+const {
+  executorWallet,
+  responderWallet,
+  deployerWallet,
+  leftChain,
+  rightChain,
+  tearDownChains,
+} = spinUpChains();
 
 // See https://github.com/connext/vector/blob/main/modules/protocol/src/testing/integration/happy.spec.ts
 // Will it be easier to use vector class instances (wallets)? Or try and go state-by-state as we did with nitro?
@@ -20,60 +28,6 @@ import { TestContractArtifacts } from "@statechannels/nitro-protocol";
 // Record time taken and gas consumed
 // Explore unhappy cases
 // Explore off-chain funding use case
-
-const executorWallet = ethers.Wallet.createRandom();
-const responderWallet = ethers.Wallet.createRandom();
-const deployerWallet = ethers.Wallet.createRandom(); // to deploy contracts
-
-const left = {
-  gasPrice: ethers.constants.One.toHexString(),
-  port: 9001,
-  _chainId: 66,
-  _chainIdRpc: 66,
-  accounts: [
-    {
-      secretKey: executorWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
-    },
-    {
-      secretKey: deployerWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
-    },
-  ],
-};
-const leftServer = (ganache as any).server(left);
-leftServer.listen(left.port, async (err) => {
-  if (err) throw err;
-  console.log(`ganache listening on port ${left.port}...`);
-});
-const leftChain = new ethers.providers.JsonRpcProvider(
-  `http://localhost:${left.port}`
-);
-
-const right = {
-  gasPrice: ethers.constants.One.toHexString(),
-  port: 9002,
-  _chainId: 99,
-  _chainIdRpc: 99,
-  accounts: [
-    {
-      secretKey: responderWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
-    },
-    {
-      secretKey: deployerWallet.privateKey,
-      balance: ethers.constants.WeiPerEther.mul(800).toHexString(),
-    },
-  ],
-};
-const rightServer = (ganache as any).server(right);
-rightServer.listen(right.port, async (err) => {
-  if (err) throw err;
-  console.log(`ganache listening on port ${right.port}...`);
-});
-const rightChain = new ethers.providers.JsonRpcProvider(
-  `http://localhost:${right.port}`
-);
 
 (async function () {
   // SETUP CONTRACTS ON BOTH CHAINS
@@ -178,8 +132,7 @@ const rightChain = new ethers.providers.JsonRpcProvider(
   await logBalances(executor, responder);
 
   // teardown blockchains
-  await leftServer.close();
-  await rightServer.close();
+  await tearDownChains();
 })();
 
 interface Actor {
