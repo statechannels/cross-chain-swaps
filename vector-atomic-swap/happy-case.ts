@@ -4,9 +4,9 @@ import { artifacts, WithdrawCommitment } from "@connext/vector-contracts";
 import { CoreChannelState, CoreTransferState } from "@connext/vector-types";
 import { ChannelSigner } from "@connext/vector-utils";
 import { solidityKeccak256 } from "ethers/lib/utils";
-import { SWAP_AMOUNT } from "./constants";
+import { SWAP_AMOUNT } from "../constants";
 import { TestContractArtifacts } from "@statechannels/nitro-protocol";
-import { spinUpChains } from "./two-chain-setup";
+import { spinUpChains } from "../two-chain-setup";
 
 const {
   executorWallet,

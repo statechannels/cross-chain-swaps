@@ -19,7 +19,7 @@
     "typescript": "^4.2.3"
   },
   "scripts": {
-    "go-nitro": "ts-node nitro-happy-case.ts",
-    "go-vector": "ts-node vector-happy-case.ts"
+    "go-nitro": "ts-node ./nitro-atomic-swap/happy-case.ts",
+    "go-vector": "ts-node ./vector-atomic-swap/happy-case.ts"
   }
 }
