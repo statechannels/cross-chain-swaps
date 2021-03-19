@@ -16,18 +16,15 @@ import {
   encodeOutcome,
   convertAddressToBytes32,
 } from "@statechannels/nitro-protocol";
-import chalk = require("chalk");
 import { LEFT_CHAIN_ID, RIGHT_CHAIN_ID, SWAP_AMOUNT } from "../constants";
-import { spinUpChains } from "../common/two-chain-setup";
+import {
+  Actor,
+  Executor,
+  Responder,
+  spinUpChains,
+} from "../common/two-chain-setup";
 
-const {
-  executorWallet,
-  responderWallet,
-  deployerWallet,
-  leftChain,
-  rightChain,
-  tearDownChains,
-} = spinUpChains();
+const { leftChain, rightChain, tearDownChains } = spinUpChains();
 
 // Spin up two instances of ganache.
 // Deploy NitroAdjudicator, ERC20AssetHolder, HashLock to both instances
@@ -84,24 +81,8 @@ const correctPreImage: HashLockedSwapData = {
     rightToken,
   ] = await deployContractsToChain(rightChain);
 
-  const executor: Actor = {
-    signingWallet: executorWallet,
-    log: (s: string) => console.log(chalk.keyword("orangered")("> " + s)),
-    gasSpent: 0,
-    getLeftBalance: async () =>
-      await leftToken.balanceOf(executorWallet.address),
-    getRightBalance: async () =>
-      await rightToken.balanceOf(executorWallet.address),
-  };
-  const responder: Actor = {
-    signingWallet: responderWallet,
-    log: (s: string) => console.log(chalk.keyword("gray")("< " + s)),
-    gasSpent: 0,
-    getLeftBalance: async () =>
-      await leftToken.balanceOf(responderWallet.address),
-    getRightBalance: async () =>
-      await rightToken.balanceOf(responderWallet.address),
-  };
+  const executor = new Executor(leftToken, rightToken);
+  const responder = new Responder(leftToken, rightToken);
 
   await logBalances(executor, responder);
 
@@ -196,13 +177,6 @@ const correctPreImage: HashLockedSwapData = {
   await tearDownChains();
 })();
 
-interface Actor {
-  signingWallet: ethers.Wallet;
-  log: (s: string) => void;
-  gasSpent: number;
-  getLeftBalance: () => Promise<ethers.BigNumber>;
-  getRightBalance: () => Promise<ethers.BigNumber>;
-}
 async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
   // This is a one-time operation, so we do not count the gas costs
   // use index 1 (deployer) to pay the ETH

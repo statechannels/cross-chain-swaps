@@ -1,11 +1,17 @@
 import { Contract, ethers } from "ethers";
-import chalk = require("chalk");
+
 import { artifacts, WithdrawCommitment } from "@connext/vector-contracts";
 import { CoreChannelState, CoreTransferState } from "@connext/vector-types";
 import { ChannelSigner } from "@connext/vector-utils";
 import { solidityKeccak256 } from "ethers/lib/utils";
 import { SWAP_AMOUNT } from "../constants";
-import { spinUpChains } from "../common/two-chain-setup";
+import {
+  Actor,
+  Executor,
+  Responder,
+  spinUpChains,
+  logBalances,
+} from "../common/two-chain-setup";
 import { deployContractsToChain } from "./helpers";
 
 const {
@@ -48,25 +54,8 @@ const {
     rightToken,
   ] = await deployContractsToChain(rightChain);
 
-  const executor: Actor = {
-    signingWallet: executorWallet,
-    log: (s: string) => console.log(chalk.keyword("orangered")("> " + s)),
-    gasSpent: 0,
-    getLeftBalance: async () =>
-      await leftToken.balanceOf(executorWallet.address),
-    getRightBalance: async () =>
-      await rightToken.balanceOf(executorWallet.address),
-  };
-  const responder: Actor = {
-    signingWallet: responderWallet,
-    log: (s: string) => console.log(chalk.keyword("gray")("< " + s)),
-    gasSpent: 0,
-    getLeftBalance: async () =>
-      await leftToken.balanceOf(responderWallet.address),
-    getRightBalance: async () =>
-      await rightToken.balanceOf(responderWallet.address),
-  };
-
+  const executor = new Executor(leftToken, rightToken);
+  const responder = new Responder(leftToken, rightToken);
   await logBalances(executor, responder);
 
   const leftCore = await fundChannel(
@@ -135,13 +124,6 @@ const {
   await tearDownChains();
 })();
 
-interface Actor {
-  signingWallet: ethers.Wallet;
-  log: (s: string) => void;
-  gasSpent: number;
-  getLeftBalance: () => Promise<ethers.BigNumber>;
-  getRightBalance: () => Promise<ethers.BigNumber>;
-}
 /**
  * Send assets to the not-yet-deployed contract (As Bob)
  * @param chain
@@ -404,21 +386,6 @@ async function createAndDefundChannel(
   joiner.log(
     `called VectorChannel.withdraw on chain ${chainId} spent ${gasUsed3} gas, total ${joiner.gasSpent}`
   );
-}
-
-async function logBalances(...actors: Actor[]) {
-  for await (const actor of actors) {
-    actor.log(
-      `I have ${(
-        await actor.getLeftBalance()
-      ).toString()} tokens on the left chain`
-    );
-    actor.log(
-      `I have ${(
-        await actor.getRightBalance()
-      ).toString()} tokens on the right chain`
-    );
-  }
 }
 
 // functions pulled out of @connext/vector-utils
