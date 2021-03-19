@@ -1,12 +1,12 @@
-import { Contract, ContractFactory, ethers } from "ethers";
+import { Contract, ethers } from "ethers";
 import chalk = require("chalk");
 import { artifacts, WithdrawCommitment } from "@connext/vector-contracts";
 import { CoreChannelState, CoreTransferState } from "@connext/vector-types";
 import { ChannelSigner } from "@connext/vector-utils";
 import { solidityKeccak256 } from "ethers/lib/utils";
 import { SWAP_AMOUNT } from "../constants";
-import { TestContractArtifacts } from "@statechannels/nitro-protocol";
-import { spinUpChains } from "../two-chain-setup";
+import { spinUpChains } from "../common/two-chain-setup";
+import { deployContractsToChain } from "./helpers";
 
 const {
   executorWallet,
@@ -141,49 +141,6 @@ interface Actor {
   gasSpent: number;
   getLeftBalance: () => Promise<ethers.BigNumber>;
   getRightBalance: () => Promise<ethers.BigNumber>;
-}
-async function deployContractsToChain(chain: ethers.providers.JsonRpcProvider) {
-  // This is a one-time operation, so we do not count the gas costs
-  // use index 1 (deployer) to pay the ETH
-  const deployer = await chain.getSigner(1);
-
-  const channelMasterCopy = await new ContractFactory(
-    artifacts.ChannelMastercopy.abi,
-    artifacts.ChannelMastercopy.bytecode,
-    deployer
-  ).deploy();
-
-  const channelFactory = await new ContractFactory(
-    artifacts.ChannelFactory.abi,
-    artifacts.ChannelFactory.bytecode,
-    deployer
-  ).deploy(channelMasterCopy.address, 0); // args are channelMasterCopy and chainId, but we can use zero for the chainid
-  //   https://github.com/connext/vector/blob/main/modules/contracts/src.sol/ChannelFactory.sol#L28
-
-  const hashLock = await new ContractFactory(
-    artifacts.HashlockTransfer.abi,
-    artifacts.HashlockTransfer.bytecode,
-    deployer
-  ).deploy();
-
-  const transferRegistry = await new ContractFactory(
-    artifacts.TransferRegistry.abi,
-    artifacts.TransferRegistry.bytecode,
-    deployer
-  ).deploy();
-
-  const token = await ContractFactory.fromSolidity(
-    TestContractArtifacts.TokenArtifact,
-    deployer
-  ).deploy(await chain.getSigner(0).getAddress());
-
-  return [
-    channelMasterCopy,
-    channelFactory,
-    hashLock,
-    transferRegistry,
-    token,
-  ].map((contract) => contract.connect(chain.getSigner(0)));
 }
 /**
  * Send assets to the not-yet-deployed contract (As Bob)

@@ -18,7 +18,7 @@ import {
 } from "@statechannels/nitro-protocol";
 import chalk = require("chalk");
 import { LEFT_CHAIN_ID, RIGHT_CHAIN_ID, SWAP_AMOUNT } from "../constants";
-import { spinUpChains } from "../two-chain-setup";
+import { spinUpChains } from "../common/two-chain-setup";
 
 const {
   executorWallet,
