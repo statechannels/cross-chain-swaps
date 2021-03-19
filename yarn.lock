@@ -965,10 +965,10 @@
   resolved "https://registry.yarnpkg.com/@solidity-parser/parser/-/parser-0.11.1.tgz#fa840af64840c930f24a9c82c08d4a092a068add"
   integrity sha512-H8BSBoKE8EubJa0ONqecA2TviT3TnHeC4NpgnAHSUiuhZoQBfPB4L2P9bs8R6AoTW10Endvh3vc+fomVMIDIYQ==
 
-"@statechannels/nitro-protocol@^0.16.0":
-  version "0.16.0"
-  resolved "https://registry.yarnpkg.com/@statechannels/nitro-protocol/-/nitro-protocol-0.16.0.tgz#70127a1971bd73d0555a9108b096be1297e7e5a1"
-  integrity sha512-LwVAqjXcwOqb5XqDtwoIjdVweNMjiQ8PcwQNEdyvb3OaE7dJ4aIXzipzAG1lSY5AAzv/0QEsxswNY9kf62Zgmg==
+"@statechannels/nitro-protocol@^0.17.0":
+  version "0.17.0"
+  resolved "https://registry.yarnpkg.com/@statechannels/nitro-protocol/-/nitro-protocol-0.17.0.tgz#8c49428636b2ef2c1f9ad3f610587fc781c55766"
+  integrity sha512-MkGgKwWWY/+vcHozgg4w+dD/jBlrkY2pQ016azDT7Uu3hatiXALmSSIGS2TlUHLqIO3sXi0+k++CEornCfkv0A==
   dependencies:
     "@openzeppelin/contracts" "3.2.2-solc-0.7"
     ethers "5.0.12"

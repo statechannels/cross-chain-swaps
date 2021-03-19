@@ -11,7 +11,7 @@
     "@connext/vector-protocol": "^0.2.0-beta.9",
     "@connext/vector-types": "^0.2.0-beta.9",
     "@connext/vector-utils": "^0.2.0-beta.9",
-    "@statechannels/nitro-protocol": "^0.16.0",
+    "@statechannels/nitro-protocol": "^0.17.0",
     "chalk": "^4.1.0",
     "ethers": "^5.0.31",
     "ganache-core": "2.13.1",
