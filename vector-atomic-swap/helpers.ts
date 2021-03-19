@@ -117,6 +117,14 @@ export async function fundChannel(
   );
   return core;
 }
+/**
+ * Create the multiSig and deposit (As Alice)
+ * @param chain
+ * @param proposer
+ * @param joiner
+ * @param channelFactory
+ * @param channelMasterCopy
+ */
 export async function createAndFundChannel(
   chain: ethers.providers.JsonRpcProvider,
   proposer: Actor,
@@ -216,6 +224,14 @@ export async function createAndFundChannel(
   // within vector client code, the amounts will be read off the chain
   return core;
 }
+/**
+ * Withdraw funds from the multisig
+ * @param chain
+ * @param proposer
+ * @param joiner
+ * @param channelFactory
+ * @param channelMasterCopy
+ */
 export async function defundChannel(
   channelAddress: string,
   proposer: Actor,
@@ -259,6 +275,14 @@ export async function defundChannel(
     `called VectorChannel.withdraw on chain ${chainId} spent ${gasUsed3} gas, total ${gasPayer.gasSpent}`
   );
 }
+/**
+ * Create2 the multisig and then withdraw funds from it
+ * @param chain
+ * @param proposer
+ * @param joiner
+ * @param channelFactory
+ * @param channelMasterCopy
+ */
 export async function createAndDefundChannel(
   channelAddress: string,
   proposer: Actor,
