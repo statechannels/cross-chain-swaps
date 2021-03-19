@@ -14,14 +14,7 @@ import {
 } from "../common/two-chain-setup";
 import { deployContractsToChain } from "./helpers";
 
-const {
-  executorWallet,
-  responderWallet,
-  deployerWallet,
-  leftChain,
-  rightChain,
-  tearDownChains,
-} = spinUpChains();
+const { leftChain, rightChain, tearDownChains } = spinUpChains();
 
 // See https://github.com/connext/vector/blob/main/modules/protocol/src/testing/integration/happy.spec.ts
 // Will it be easier to use vector class instances (wallets)? Or try and go state-by-state as we did with nitro?
@@ -71,10 +64,10 @@ const {
     channelAddress: leftCore.channelAddress,
     transferId: "todo",
     transferDefinition: leftHashLock.address,
-    initiator: executorWallet.address,
-    responder: responderWallet.address,
+    initiator: executor.signingWallet.address,
+    responder: responder.signingWallet.address,
     assetId: ethers.constants.HashZero,
-    balance: { amount: ["0x1"], to: [executorWallet.address] },
+    balance: { amount: ["0x1"], to: [executor.signingWallet.address] },
     transferTimeout: leftCore.timeout,
     initialStateHash: ethers.constants.HashZero, // TODO
   };
@@ -160,7 +153,7 @@ async function fundChannel(
     alice: joiner.signingWallet.address,
     bob: proposer.signingWallet.address,
     assetIds: [token.address],
-    balances: [{ amount: [SWAP_AMOUNT], to: [responderWallet.address] }],
+    balances: [{ amount: [SWAP_AMOUNT], to: [joiner.signingWallet.address] }],
     processedDepositsA: [],
     processedDepositsB: [],
     defundNonces: [],
@@ -230,7 +223,7 @@ async function createAndFundChannel(
     alice: proposer.signingWallet.address,
     bob: joiner.signingWallet.address,
     assetIds: [token ? token.address : ethers.constants.AddressZero],
-    balances: [{ amount: [SWAP_AMOUNT], to: [responderWallet.address] }],
+    balances: [{ amount: [SWAP_AMOUNT], to: [joiner.signingWallet.address] }],
     processedDepositsA: [],
     processedDepositsB: [],
     defundNonces: [],

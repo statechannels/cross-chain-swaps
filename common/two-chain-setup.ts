@@ -63,9 +63,6 @@ export function spinUpChains() {
   }
 
   return {
-    executorWallet,
-    responderWallet,
-    deployerWallet,
     leftChain,
     rightChain,
     tearDownChains,
