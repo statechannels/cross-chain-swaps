@@ -4,6 +4,7 @@ import { LEFT_CHAIN_ID, RIGHT_CHAIN_ID } from "../constants";
 import {
   Executor,
   logBalances,
+  logTotalGasSpentByAll,
   Responder,
   spinUpChains,
 } from "../common/two-chain-setup";
@@ -138,6 +139,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
   ]);
 
   await logBalances(executor, responder);
+  logTotalGasSpentByAll(executor, responder);
 
   // teardown blockchains
   await tearDownChains();
