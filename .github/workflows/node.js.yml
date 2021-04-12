@@ -27,5 +27,6 @@ jobs:
       - run: yarn install
       - run: yarn go-vector
       - run: yarn go-nitro
+      - run: yarn go-ninja
       - run: yarn dispute-nitro
       - run: yarn dispute-vector
