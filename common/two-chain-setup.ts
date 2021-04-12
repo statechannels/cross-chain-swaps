@@ -123,3 +123,11 @@ export async function logBalances(...actors: Actor[]) {
     await actor.logBalances();
   }
 }
+
+export async function logTotalGasSpentByAll(...actors: Actor[]) {
+  let total = 0;
+  for (const actor of actors) {
+    total += actor.gasSpent;
+  }
+  console.log("Total gas spent by all parties: " + total);
+}

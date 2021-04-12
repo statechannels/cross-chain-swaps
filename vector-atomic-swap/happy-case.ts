@@ -7,6 +7,7 @@ import {
   Responder,
   spinUpChains,
   logBalances,
+  logTotalGasSpentByAll,
 } from "../common/two-chain-setup";
 import {
   deployContractsToChain,
@@ -114,6 +115,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
   );
 
   await logBalances(executor, responder);
+  logTotalGasSpentByAll(executor, responder);
 
   // teardown blockchains
   await tearDownChains();
