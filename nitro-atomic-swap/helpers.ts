@@ -47,6 +47,12 @@ export async function deployContractsToChain(
     deployer
   ).deploy();
 
+  await (
+    await token
+      .connect(chain.getSigner(0))
+      .transfer(erc20AssetHolder.address, 1)
+  ).wait(); // preload assetholder to represent real-world usage
+
   return [nitroAdjudicator, erc20AssetHolder, hashLock, token].map((contract) =>
     contract.connect(chain.getSigner(0))
   );
