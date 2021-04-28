@@ -16,10 +16,13 @@ import {
   ChannelSigner,
   createlockHash,
   createTestFullHashlockTransferState,
+  encodeTransferResolver,
+  encodeTransferState,
   generateMerkleTreeData,
   getRandomBytes32,
   hashCoreTransferState,
   hashTransferState,
+  signChannelMessage,
 } from "@connext/vector-utils";
 import { solidityKeccak256 } from "ethers/lib/utils";
 import { ONE, SWAP_AMOUNT, ZERO } from "../constants";
@@ -372,7 +375,7 @@ export async function createAndFullyFundChannel(
   channelFactory: Contract,
   channelMasterCopy: Contract,
   transferDefinition: Contract,
-  token?: Contract,
+  token: Contract,
 ) {
   const { chainId } = await chain.getNetwork();
   const channelAddress = ethers.utils.getCreate2Address(
@@ -399,8 +402,7 @@ export async function createAndFullyFundChannel(
     transferDefinition: transferDefinition.address,
     assetId: token.address,
     channelAddress,
-    // use random receiver addr to verify transfer when bob must dispute
-    balance: { to: [alice.address, bob.address], amount: ["7", "0"] },
+    balance: { to: [alice.address, bob.address], amount: ["1", "0"] },
     transferState: state,
     transferResolver: { preImage },
     transferTimeout: "3",
@@ -413,7 +415,7 @@ export async function createAndFullyFundChannel(
     channelAddress: channelAddress, // depends on chainId
     alice: alice.address,
     bob: bob.address,
-    assetIds: [token ? token.address : ethers.constants.AddressZero],
+    assetIds: [token.address],
     balances: [{ amount: [ZERO, ZERO], to: [alice.address, bob.address] }],
     processedDepositsA: [],
     processedDepositsB: [],
@@ -430,7 +432,7 @@ export async function createAndFullyFundChannel(
     await channelFactory.createChannelAndDepositAlice(
       alice.address,
       bob.address,
-      token ? token.address : ethers.constants.AddressZero,
+      token.address,
       ONE,
     )
   ).wait(); // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
@@ -466,7 +468,6 @@ export async function disputeChannel(
 export async function disputeTransfer(
   chain: ethers.providers.JsonRpcProvider,
   coreState: CoreChannelState,
-
   transferState: FullTransferState,
 ) {
   const { chainId } = await chain.getNetwork();
@@ -484,6 +485,47 @@ export async function disputeTransfer(
     )
   ).wait();
   console.log(`Gas used for dispute transfer ${gasUsed}`);
+}
+
+export async function defundTransfer(
+  chain: ethers.providers.JsonRpcProvider,
+  coreState: CoreChannelState,
+  transferState: FullTransferState,
+  alice: ethers.Wallet,
+  bob: ethers.Wallet,
+  token: Contract,
+) {
+  const { chainId } = await chain.getNetwork();
+  const channel = await new Contract(
+    transferState.channelAddress,
+    artifacts.VectorChannel.abi,
+    chain.getSigner(0),
+  );
+
+  const { gasUsed } = await (
+    await channel.defundTransfer(
+      transferState,
+      encodeTransferState(
+        transferState.transferState,
+        transferState.transferEncodings[0],
+      ),
+      encodeTransferResolver(
+        transferState.transferResolver,
+        transferState.transferEncodings[1],
+      ),
+      await signChannelMessage(transferState.initialStateHash, bob.privateKey),
+    )
+  ).wait();
+  console.log(`Gas used for defund transfer ${gasUsed}`);
+
+  const { gasUsed: gasUsedForExit } = await (
+    await channel.exit(
+      transferState.assetId,
+      transferState.balance.to[1],
+      transferState.balance.to[1],
+    )
+  ).wait();
+  console.log(`Gas used for exit transfer ${gasUsedForExit}`);
 }
 
 // Get merkle proof of transfer

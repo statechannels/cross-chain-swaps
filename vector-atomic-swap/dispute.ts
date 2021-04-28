@@ -6,12 +6,9 @@ import {
   createAndFullyFundChannel,
   disputeChannel,
   disputeTransfer,
+  defundTransfer as defundTransferAndExit,
 } from "./helpers";
-import {
-  ChannelSigner,
-  hashChannelCommitment,
-  hashCoreChannelState,
-} from "@connext/vector-utils";
+import { ChannelSigner, hashChannelCommitment } from "@connext/vector-utils";
 
 const { leftChain: chain, tearDownChains } = spinUpChains();
 
@@ -64,6 +61,14 @@ async function main() {
 
   await disputeChannel(chain, coreState, aliceSignature, bobSignature);
   await disputeTransfer(chain, coreState, transferState);
+  await defundTransferAndExit(
+    chain,
+    coreState,
+    transferState,
+    alice,
+    bob,
+    token,
+  );
 
   // teardown blockchains
   await tearDownChains();
