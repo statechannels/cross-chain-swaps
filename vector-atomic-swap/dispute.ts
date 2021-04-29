@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { spinUpChains } from "../common/two-chain-setup";
 import {
   deployContractsToChain,
-  createAndFullyFundChannel,
+  createAndFundChannelForDispute,
   disputeChannel,
   disputeTransfer,
   defundTransfer as defundTransferAndExit,
@@ -12,28 +12,20 @@ import { ChannelSigner, hashChannelCommitment } from "@connext/vector-utils";
 
 const { leftChain: chain, tearDownChains } = spinUpChains();
 
-// See https://github.com/connext/vector/blob/main/modules/protocol/src/testing/integration/happy.spec.ts
-// Will it be easier to use vector class instances (wallets)? Or try and go state-by-state as we did with nitro?
-// @connext do not really export much from their protocol. It's all only accesible via the Vector class.
-
-// Spin up two instances of ganache.
-// alice is assumed to be a high-fidelity user (has gas in their signing address) and bob is assumed to be a low-fidelity user (doesn't always have gas in their signing address).
-// Bob is the user. Alice is the node.
-// Run an atomic swap between the chains (Happy Case, Direct Funding)
-// Record time taken and gas consumed
-// Explore unhappy cases
-// Explore off-chain funding use case
-
-async function main() {
+/**
+ * This function works through a dispute scenario and logs gas usage for each ethereum transaction.
+ * The scenario is:
+ * - The channel contains one transfer for a one token.
+ * - Only the funds in the transfer are disputed/withdrawn.
+ * - defundChannel is never called. defundChannel is usually called to withdraw funds not part of any transfers.
+ */
+async function dispute() {
   const alice = ethers.Wallet.createRandom();
   const bob = ethers.Wallet.createRandom();
 
   const aliceSigner = await new ChannelSigner(alice.privateKey);
   const bobSigner = await new ChannelSigner(bob.privateKey);
 
-  // SETUP CONTRACTS ON BOTH CHAINS
-  // Deploy the contracts to chain, and then reconnect them to their respective signers
-  // for the rest of the interactions
   const [
     masterCopy,
     channelFactory,
@@ -42,7 +34,7 @@ async function main() {
     token,
   ] = await deployContractsToChain(chain);
 
-  const { coreState, transferState } = await createAndFullyFundChannel(
+  const { coreState, transferState } = await createAndFundChannelForDispute(
     chain,
     alice,
     bob,
@@ -75,4 +67,4 @@ async function main() {
   console.log("DONE!");
 }
 
-main();
+dispute();

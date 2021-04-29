@@ -20,7 +20,7 @@ import {
   encodeOutcome,
   convertAddressToBytes32,
 } from "@statechannels/nitro-protocol";
-import { Actor } from "../common/two-chain-setup";
+import { Actor, advanceBlocktime } from "../common/two-chain-setup";
 import { SWAP_AMOUNT } from "../constants";
 
 export async function deployContractsToChain(
@@ -274,7 +274,7 @@ export function swap(outcome: Outcome): Outcome {
   return swappedOutome;
 }
 
-export async function fundChannelFully(
+export async function fundChannelForDispute(
   erc20AssetHolder: ethers.Contract,
   token: ethers.Contract,
   initialState: State,
@@ -359,19 +359,4 @@ export async function pushOutcomeAndTransferAll(
     )
   ).wait();
   console.log(`Gas used for pushOutcomeAndTransferAll is ${gasUsed}`);
-}
-
-async function advanceBlocktime(
-  provider: ethers.providers.JsonRpcProvider,
-  seconds: number,
-): Promise<void> {
-  const { timestamp: currTime } = await provider.getBlock("latest");
-  await provider.send("evm_increaseTime", [seconds]);
-  await provider.send("evm_mine", []);
-  const { timestamp: finalTime } = await provider.getBlock("latest");
-  const desired = currTime + seconds;
-  if (finalTime < desired) {
-    const diff = finalTime - desired;
-    await provider.send("evm_increaseTime", [diff]);
-  }
 }
