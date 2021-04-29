@@ -459,10 +459,9 @@ export async function disputeChannel(
     artifacts.VectorChannel.abi,
     chain.getSigner(0),
   );
-  const { gasUsed } = await (
-    await channel.disputeChannel(coreState, aliceSignature, bobSignature)
-  ).wait();
-  console.log(`Gas used for dispute channel ${gasUsed}`);
+  const tx = await channel.disputeChannel(coreState, aliceSignature, bobSignature)
+
+  await parseTransaction(chain, tx, 'dispute channel')
 }
 
 export async function disputeTransfer(
@@ -478,14 +477,14 @@ export async function disputeTransfer(
   );
   await advanceBlocktime(chain, BigNumber.from(coreState.timeout).toNumber());
 
-  const { gasUsed } = await (
-    await channel.disputeTransfer(
+  const tx = await channel.disputeTransfer(
       transferState,
       getMerkleProof([transferState], transferState.transferId),
     )
-  ).wait();
-  console.log(`Gas used for dispute transfer ${gasUsed}`);
+
+  await parseTransaction(chain, tx, 'dispute transfer')
 }
+
 
 export async function defundTransfer(
   chain: ethers.providers.JsonRpcProvider,
@@ -501,9 +500,7 @@ export async function defundTransfer(
     artifacts.VectorChannel.abi,
     chain.getSigner(0),
   );
-
-  const { gasUsed } = await (
-    await channel.defundTransfer(
+    const defundTx = await channel.defundTransfer(
       transferState,
       encodeTransferState(
         transferState.transferState,
@@ -515,18 +512,23 @@ export async function defundTransfer(
       ),
       await signChannelMessage(transferState.initialStateHash, bob.privateKey),
     )
-  ).wait();
-  console.log(`Gas used for defund transfer ${gasUsed}`);
 
-  const { gasUsed: gasUsedForExit } = await (
-    await channel.exit(
+  await parseTransaction(chain, defundTx, 'defund transfer')
+
+  const exitTx = await channel.exit(
       transferState.assetId,
       transferState.balance.to[1],
       transferState.balance.to[1],
     )
-  ).wait();
-  console.log(`Gas used for exit transfer ${gasUsedForExit}`);
+  await parseTransaction(chain, exitTx, 'exit transfer')
 }
+
+async function parseTransaction(chain, tx, action: string) {
+  const {gasUsed} = await (tx).wait();
+  
+  console.log(`Gas used for ${action}: ${gasUsed}`);
+}
+
 
 // Get merkle proof of transfer
 function getMerkleProof(cts: FullTransferState[], toProve: string) {
