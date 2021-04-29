@@ -57,10 +57,16 @@ async function main() {
     ..._preFund0,
     turnNum: 4,
     appData: encodeHashLockedSwapData(correctPreImage),
-    outcome: _preFund0.outcome,
+    outcome: swap(_preFund0.outcome),
   };
-  await challengeChannel(nitroAdjudicator, unlock4, alice, bob);
-  await pushOutcomeAndTransferAll(chain, nitroAdjudicator, unlock4, bob);
+  await challengeChannel(
+    nitroAdjudicator,
+    { ..._preFund0, turnNum: 3 },
+    unlock4,
+    alice,
+    bob,
+  );
+  await pushOutcomeAndTransferAll(chain, nitroAdjudicator, unlock4, alice);
 
   // teardown blockchains
   await tearDownChains();

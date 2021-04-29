@@ -296,25 +296,27 @@ export async function fundChannelFully(
 
 export async function challengeChannel(
   nitroAdjudicator: ethers.Contract,
-  challengeState: State,
+  challengeState1: State,
+  challengeState2: State,
   alice: ethers.Wallet,
   bob: ethers.Wallet,
 ) {
-  const fixedPart = getFixedPart(challengeState);
-  const largestTurnNum = challengeState.turnNum;
-  const variableParts = [getVariablePart(challengeState)];
+  const fixedPart = getFixedPart(challengeState1);
+  const largestTurnNum = challengeState2.turnNum;
+  const variableParts = [challengeState1, challengeState2].map(getVariablePart);
   const isFinalCount = 0;
-  const whoSignedWhat = [0, 0];
-  const signatures = [alice, bob].map(
-    (wallet) => signState(challengeState, wallet.privateKey).signature,
-  );
+  const whoSignedWhat = [1, 0];
+  const signatures = [
+    signState(challengeState2, alice.privateKey),
+    signState(challengeState1, bob.privateKey),
+  ].map((ss) => ss.signature);
   const challengeStateToSign: SignedState = {
-    state: challengeState,
+    state: challengeState2,
     signature: { v: 0, r: "", s: "", _vs: "", recoveryParam: 0 },
   };
   const challengeSignature = signChallengeMessage(
     [challengeStateToSign],
-    bob.privateKey,
+    alice.privateKey,
   );
   const { gasUsed } = await (
     await nitroAdjudicator.challenge(
@@ -334,14 +336,14 @@ export async function pushOutcomeAndTransferAll(
   chain: ethers.providers.JsonRpcProvider,
   nitroAdjudicator: ethers.Contract,
   challengeState: State,
-  bob: ethers.Wallet,
+  alice: ethers.Wallet,
 ) {
   const channelId = getChannelId(getFixedPart(challengeState));
   const fingerprint = await nitroAdjudicator.unpackStatus(channelId);
   const turnNumberRecord = challengeState.turnNum;
   const finalizesAt = fingerprint[1];
   const stateHash = hashState(challengeState);
-  const challengerAddress = bob.address;
+  const challengerAddress = alice.address;
   const outcomeBytes = encodeOutcome(challengeState.outcome);
 
   await advanceBlocktime(chain, 60);
