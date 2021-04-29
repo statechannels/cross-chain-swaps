@@ -58,9 +58,9 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
     60,
     leftHashLock.address,
     leftERC20AssetHolder.address,
-    executor,
-    responder,
-    ethers.utils.sha256(preImage)
+    executor.signingWallet,
+    responder.signingWallet,
+    ethers.utils.sha256(preImage),
   );
 
   // exchanges setup states and funds on left chain
@@ -69,7 +69,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
     leftToken,
     _PreFund0,
     executor,
-    responder
+    responder,
   );
 
   // given the longChannel is now funded and running
@@ -79,9 +79,9 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
     30,
     rightHashLock.address,
     rightERC20AssetHolder.address,
-    responder,
-    executor,
-    decodeHashLockedSwapData(_PreFund0.appData).h
+    responder.signingWallet,
+    executor.signingWallet,
+    decodeHashLockedSwapData(_PreFund0.appData).h,
   );
 
   const shortChannel = await fundChannel(
@@ -89,7 +89,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
     rightToken,
     _preFund0,
     responder,
-    executor
+    executor,
   );
 
   // await logBalances(executor, responder); // uncomment this to check deposit was legit
@@ -126,7 +126,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
       responder,
       executor,
       rightHashLock,
-      rightNitroAdjudicator
+      rightNitroAdjudicator,
     ),
     defundChannel(
       _PreFund0,
@@ -134,7 +134,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
       executor,
       responder,
       leftHashLock,
-      leftNitroAdjudicator
+      leftNitroAdjudicator,
     ),
   ]);
 

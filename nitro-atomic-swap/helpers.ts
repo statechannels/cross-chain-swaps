@@ -1,6 +1,9 @@
 import { Contract, ContractFactory, ethers } from "ethers";
 import {
   ContractArtifacts,
+  hashState,
+  signChallengeMessage,
+  SignedState,
   TestContractArtifacts,
 } from "@statechannels/nitro-protocol";
 import {
@@ -21,7 +24,7 @@ import { Actor } from "../common/two-chain-setup";
 import { SWAP_AMOUNT } from "../constants";
 
 export async function deployContractsToChain(
-  chain: ethers.providers.JsonRpcProvider
+  chain: ethers.providers.JsonRpcProvider,
 ) {
   // This is a one-time operation, so we do not count the gas costs
   // use index 1 (deployer) to pay the ETH
@@ -29,26 +32,26 @@ export async function deployContractsToChain(
 
   const nitroAdjudicator = await ContractFactory.fromSolidity(
     ContractArtifacts.NitroAdjudicatorArtifact,
-    deployer
+    deployer,
   ).deploy();
 
   const token = await ContractFactory.fromSolidity(
     TestContractArtifacts.TokenArtifact,
-    deployer
+    deployer,
   ).deploy(await chain.getSigner(0).getAddress());
 
   const erc20AssetHolder = await ContractFactory.fromSolidity(
     ContractArtifacts.Erc20AssetHolderArtifact,
-    deployer
+    deployer,
   ).deploy(nitroAdjudicator.address, token.address);
 
   const hashLock = await ContractFactory.fromSolidity(
     ContractArtifacts.HashLockedSwapArtifact,
-    deployer
+    deployer,
   ).deploy();
 
   return [nitroAdjudicator, erc20AssetHolder, hashLock, token].map((contract) =>
-    contract.connect(chain.getSigner(0))
+    contract.connect(chain.getSigner(0)),
   );
 }
 
@@ -61,14 +64,14 @@ interface HashLockedSwapData {
 export function encodeHashLockedSwapData(data: HashLockedSwapData): string {
   return ethers.utils.defaultAbiCoder.encode(
     ["tuple(bytes32 h, bytes preImage)"],
-    [data]
+    [data],
   );
 }
 
 export function decodeHashLockedSwapData(data: string): HashLockedSwapData {
   const { h, preImage } = ethers.utils.defaultAbiCoder.decode(
     ["tuple(bytes32 h, bytes preImage)"],
-    data
+    data,
   )[0];
   return { h, preImage };
 }
@@ -85,29 +88,26 @@ export function createHashLockChannel(
   challengeDuration: number,
   appDefinition: string,
   assetHolderAddress: string,
-  proposer: Actor,
-  joiner: Actor,
-  hash
+  proposerWallet: ethers.Wallet,
+  joinerWallet: ethers.Wallet,
+  hash,
 ) {
   const appData = encodeHashLockedSwapData({ h: hash, preImage: "0x" });
   const channel: Channel = {
     chainId: ethers.utils.hexlify(chainId),
     channelNonce: 0, // this is the first channel between these participants on this chain
-    participants: [
-      proposer.signingWallet.address,
-      joiner.signingWallet.address,
-    ],
+    participants: [proposerWallet.address, joinerWallet.address],
   };
   const outcome: AllocationAssetOutcome[] = [
     {
       assetHolderAddress,
       allocationItems: [
         {
-          destination: convertAddressToBytes32(proposer.signingWallet.address),
+          destination: convertAddressToBytes32(proposerWallet.address),
           amount: SWAP_AMOUNT,
         },
         {
-          destination: convertAddressToBytes32(joiner.signingWallet.address),
+          destination: convertAddressToBytes32(joinerWallet.address),
           amount: "0x0",
         },
       ],
@@ -130,14 +130,14 @@ export async function fundChannel(
   token: ethers.Contract,
   initialState: State,
   proposer: Actor,
-  joiner: Actor
+  joiner: Actor,
 ) {
   // Proposer proposes a channel with a hashlocked payment for the joiner
   const PreFund0 = signState(initialState, proposer.signingWallet.privateKey);
   const channelId = getChannelId(initialState.channel);
   // not shown: pf0 delivered to joiner
   proposer.log(
-    `I propose a hashlocked payment, sending PreFund0 for chain ${initialState.channel.chainId}`
+    `I propose a hashlocked payment, sending PreFund0 for chain ${initialState.channel.chainId}`,
   );
   // skip: Joiner checks that the timeout is long enough
   // skip: Joiner checks that their destination is in the channel (in the receiving slot)
@@ -146,7 +146,7 @@ export async function fundChannel(
   const _PreFund1: State = { ...initialState, turnNum: 1 };
   const PreFund1 = signState(_PreFund1, joiner.signingWallet.privateKey);
   joiner.log(
-    `Sure thing. Your channel looks good. Sending PreFund1 for chain ${initialState.channel.chainId}`
+    `Sure thing. Your channel looks good. Sending PreFund1 for chain ${initialState.channel.chainId}`,
   );
 
   const joinerToReactToDeposit = new Promise((resolve, reject) => {
@@ -156,11 +156,11 @@ export async function fundChannel(
         const _PostFund3: State = { ...initialState, turnNum: 3 };
         const PostFund3 = signState(
           _PostFund3,
-          joiner.signingWallet.privateKey
+          joiner.signingWallet.privateKey,
         );
         // not shown: PostFund3 delivered to proposer
         joiner.log(
-          `I see your deposit and send PostFund3 for chain ${initialState.channel.chainId}`
+          `I see your deposit and send PostFund3 for chain ${initialState.channel.chainId}`,
         );
         resolve(event);
       }
@@ -172,7 +172,7 @@ export async function fundChannel(
   const _PostFund2: State = { ...initialState, turnNum: 2 };
   signState(_PostFund2, proposer.signingWallet.privateKey);
   proposer.log(
-    `I have made my deposit, and send PostFund2 for chain ${initialState.channel.chainId}`
+    `I have made my deposit, and send PostFund2 for chain ${initialState.channel.chainId}`,
   );
 
   const value = (initialState.outcome[0] as AllocationAssetOutcome)
@@ -186,7 +186,7 @@ export async function fundChannel(
 
   proposer.gasSpent += Number(increaseAllowanceGas);
   proposer.log(
-    "spent " + increaseAllowanceGas + " gas increasing token allowance"
+    "spent " + increaseAllowanceGas + " gas increasing token allowance",
   );
 
   // Proposer funds channel (costs gas)
@@ -207,17 +207,17 @@ export async function defundChannel(
   proposer: Actor,
   joiner: Actor,
   hashLock: Contract,
-  nitroAdjudicator: Contract
+  nitroAdjudicator: Contract,
 ) {
   const unlockValid = await hashLock.validTransition(
     getVariablePart(initialState),
     getVariablePart(unlockState),
     4, // turnNumB
-    2 // numParticipants
+    2, // numParticipants
   );
   if (!unlockValid) throw Error;
   proposer.log(
-    `I verified your unlock was valid; Here's a final state to help you withdraw on chain ${initialState.channel.chainId}`
+    `I verified your unlock was valid; Here's a final state to help you withdraw on chain ${initialState.channel.chainId}`,
   );
   const _isFinal5: State = { ...unlockState, isFinal: true };
   const isFinal5 = signState(_isFinal5, proposer.signingWallet.privateKey);
@@ -244,12 +244,12 @@ export async function defundChannel(
       encodeOutcome(_isFinal5.outcome),
       1,
       [0, 0],
-      sigs
+      sigs,
     )
   ).wait();
   joiner.gasSpent += Number(gasUsed);
   joiner.log(
-    `Spent ${gasUsed} gas calling concludePushOutcomeAndTransferAll, total ${joiner.gasSpent}`
+    `Spent ${gasUsed} gas calling concludePushOutcomeAndTransferAll, total ${joiner.gasSpent}`,
   );
   await concludedEvent;
 }
@@ -272,4 +272,104 @@ export function swap(outcome: Outcome): Outcome {
     },
   ];
   return swappedOutome;
+}
+
+export async function fundChannelFully(
+  erc20AssetHolder: ethers.Contract,
+  token: ethers.Contract,
+  initialState: State,
+) {
+  const channelId = getChannelId(initialState.channel);
+  const value = (initialState.outcome[0] as AllocationAssetOutcome)
+    .allocationItems[0].amount;
+
+  const { gasUsed: increaseAllowanceGas } = await (
+    await token.increaseAllowance(erc20AssetHolder.address, value)
+  ).wait();
+
+  const { gasUsed: depositGas } = await (
+    await erc20AssetHolder.deposit(channelId, 0, value)
+  ).wait();
+
+  return channelId;
+}
+
+export async function challengeChannel(
+  nitroAdjudicator: ethers.Contract,
+  challengeState: State,
+  alice: ethers.Wallet,
+  bob: ethers.Wallet,
+) {
+  const fixedPart = getFixedPart(challengeState);
+  const largestTurnNum = challengeState.turnNum;
+  const variableParts = [getVariablePart(challengeState)];
+  const isFinalCount = 0;
+  const whoSignedWhat = [0, 0];
+  const signatures = [alice, bob].map(
+    (wallet) => signState(challengeState, wallet.privateKey).signature,
+  );
+  const challengeStateToSign: SignedState = {
+    state: challengeState,
+    signature: { v: 0, r: "", s: "", _vs: "", recoveryParam: 0 },
+  };
+  const challengeSignature = signChallengeMessage(
+    [challengeStateToSign],
+    bob.privateKey,
+  );
+  const { gasUsed } = await (
+    await nitroAdjudicator.challenge(
+      fixedPart,
+      largestTurnNum,
+      variableParts,
+      isFinalCount,
+      signatures,
+      whoSignedWhat,
+      challengeSignature,
+    )
+  ).wait();
+  console.log(`Gas used to challenge ${gasUsed}`);
+}
+
+export async function pushOutcomeAndTransferAll(
+  chain: ethers.providers.JsonRpcProvider,
+  nitroAdjudicator: ethers.Contract,
+  challengeState: State,
+  bob: ethers.Wallet,
+) {
+  const channelId = getChannelId(getFixedPart(challengeState));
+  const fingerprint = await nitroAdjudicator.unpackStatus(channelId);
+  const turnNumberRecord = challengeState.turnNum;
+  const finalizesAt = fingerprint[1];
+  const stateHash = hashState(challengeState);
+  const challengerAddress = bob.address;
+  const outcomeBytes = encodeOutcome(challengeState.outcome);
+
+  await advanceBlocktime(chain, 60);
+
+  const { gasUsed } = await (
+    await nitroAdjudicator.pushOutcomeAndTransferAll(
+      channelId,
+      turnNumberRecord,
+      finalizesAt,
+      stateHash,
+      challengerAddress,
+      outcomeBytes,
+    )
+  ).wait();
+  console.log(`Gas used for pushOutcomeAndTransferAll is ${gasUsed}`);
+}
+
+async function advanceBlocktime(
+  provider: ethers.providers.JsonRpcProvider,
+  seconds: number,
+): Promise<void> {
+  const { timestamp: currTime } = await provider.getBlock("latest");
+  await provider.send("evm_increaseTime", [seconds]);
+  await provider.send("evm_mine", []);
+  const { timestamp: finalTime } = await provider.getBlock("latest");
+  const desired = currTime + seconds;
+  if (finalTime < desired) {
+    const diff = finalTime - desired;
+    await provider.send("evm_increaseTime", [diff]);
+  }
 }
