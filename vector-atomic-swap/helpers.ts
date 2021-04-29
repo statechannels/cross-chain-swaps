@@ -1,11 +1,5 @@
-import * as _ from 'lodash'
-import {
-  BigNumber,
-  constants,
-  Contract,
-  ContractFactory,
-  ethers,
-} from "ethers";
+import * as _ from "lodash";
+import { BigNumber, Contract, ContractFactory, ethers } from "ethers";
 import { TestContractArtifacts } from "@statechannels/nitro-protocol";
 import { artifacts, WithdrawCommitment } from "@connext/vector-contracts";
 import {
@@ -27,7 +21,7 @@ import {
 } from "@connext/vector-utils";
 import { solidityKeccak256 } from "ethers/lib/utils";
 import { ONE, SWAP_AMOUNT, ZERO } from "../constants";
-import { Actor } from "../common/two-chain-setup";
+import { Actor, advanceBlocktime } from "../common/two-chain-setup";
 
 export async function deployContractsToChain(
   chain: ethers.providers.JsonRpcProvider,
@@ -369,7 +363,10 @@ export const getMinimalProxyInitCode = (mastercopyAddress: string): string =>
     .toLowerCase()
     .replace(/^0x/, "")}5af43d82803e903d91602b57fd5bf3`;
 
-export async function createAndFullyFundChannel(
+/**
+ * Dispute helpers
+ */
+export async function createAndFundChannelForDispute(
   chain: ethers.providers.JsonRpcProvider,
   alice: ethers.Wallet,
   bob: ethers.Wallet,
@@ -460,9 +457,13 @@ export async function disputeChannel(
     artifacts.VectorChannel.abi,
     chain.getSigner(0),
   );
-  const tx = await channel.disputeChannel(coreState, aliceSignature, bobSignature)
+  const tx = await channel.disputeChannel(
+    coreState,
+    aliceSignature,
+    bobSignature,
+  );
 
-  await parseTransaction(chain, tx, 'dispute channel')
+  await parseTransaction(chain, tx, "dispute channel");
 }
 
 export async function disputeTransfer(
@@ -479,11 +480,11 @@ export async function disputeTransfer(
   await advanceBlocktime(chain, BigNumber.from(coreState.timeout).toNumber());
 
   const tx = await channel.disputeTransfer(
-      transferState,
-      getMerkleProof([transferState], transferState.transferId),
-    )
+    transferState,
+    getMerkleProof([transferState], transferState.transferId),
+  );
 
-  await parseTransaction(chain, tx, 'dispute transfer')
+  await parseTransaction(chain, tx, "dispute transfer");
 }
 
 export async function defundTransfer(
@@ -500,81 +501,65 @@ export async function defundTransfer(
     artifacts.VectorChannel.abi,
     chain.getSigner(0),
   );
-    const defundTx = await channel.defundTransfer(
-      transferState,
-      encodeTransferState(
-        transferState.transferState,
-        transferState.transferEncodings[0],
-      ),
-      encodeTransferResolver(
-        transferState.transferResolver,
-        transferState.transferEncodings[1],
-      ),
-      await signChannelMessage(transferState.initialStateHash, bob.privateKey),
-    )
+  const defundTx = await channel.defundTransfer(
+    transferState,
+    encodeTransferState(
+      transferState.transferState,
+      transferState.transferEncodings[0],
+    ),
+    encodeTransferResolver(
+      transferState.transferResolver,
+      transferState.transferEncodings[1],
+    ),
+    await signChannelMessage(transferState.initialStateHash, bob.privateKey),
+  );
 
-  await parseTransaction(chain, defundTx, 'defund transfer')
+  await parseTransaction(chain, defundTx, "defund transfer");
 
   const exitTx = await channel.exit(
-      transferState.assetId,
-      transferState.balance.to[1],
-      transferState.balance.to[1],
-    )
-  await parseTransaction(chain, exitTx, 'exit transfer')
+    transferState.assetId,
+    transferState.balance.to[1],
+    transferState.balance.to[1],
+  );
+  await parseTransaction(chain, exitTx, "exit transfer");
 }
 
 async function parseTransaction(chain, tx, action: string) {
-  const {gasUsed, transactionHash} = await (tx).wait();
+  const { gasUsed, transactionHash } = await tx.wait();
 
   console.log(`Gas used for ${action}: ${gasUsed}`);
 
-  const costPerOpcode = await aggregatedCostPerOpcode(chain, transactionHash)
-  const bigSpenders = costPerOpcode.filter(item => item.gas >= 200)
-  const refunds = costPerOpcode.filter(item => item.gas < 0)
+  const costPerOpcode = await aggregatedCostPerOpcode(chain, transactionHash);
+  const bigSpenders = costPerOpcode.filter((item) => item.gas >= 200);
+  const refunds = costPerOpcode.filter((item) => item.gas < 0);
 
-  console.log(_.concat(bigSpenders, ['...'], refunds))
+  console.log(_.concat(bigSpenders, ["..."], refunds));
 }
 
 async function aggregatedCostPerOpcode(
   chain: ethers.providers.JsonRpcProvider,
-  txHash: string
+  txHash: string,
 ) {
-  const trace = await chain.send('debug_traceTransaction', [txHash, {}]);
+  const trace = await chain.send("debug_traceTransaction", [txHash, {}]);
 
-  const ops = _.groupBy(trace.structLogs, step => step.op)
-  const sum = (a, b) => a + b
-  const summary = _.mapValues(ops, items => {
-    const gas = items.map(o => o.gasCost).reduce(sum);
+  const ops = _.groupBy(trace.structLogs, (step) => step.op);
+  const sum = (a, b) => a + b;
+  const summary = _.mapValues(ops, (items) => {
+    const gas = items.map((o) => o.gasCost).reduce(sum);
     const count = items.length;
 
-    const [{op}] = items
-    return {count, gas, op}
-  })
+    const [{ op }] = items;
+    return { count, gas, op };
+  });
 
-  return  _.sortBy(_.values(summary), row => -row.gas)
+  return _.sortBy(_.values(summary), (row) => -row.gas);
 }
 
-
-
+// Copy pasted from https://github.com/connext/vector/blob/177b7adc615d6a70d3353bd3472c9040243c636f/modules/contracts/src.ts/tests/cmcs/adjudicator.spec.ts#L117
 // Get merkle proof of transfer
 function getMerkleProof(cts: FullTransferState[], toProve: string) {
   const { tree } = generateMerkleTreeData(cts);
   return tree.getHexProof(
     hashCoreTransferState(cts.find((t) => t.transferId === toProve)!),
   );
-}
-
-async function advanceBlocktime(
-  provider: ethers.providers.JsonRpcProvider,
-  seconds: number,
-): Promise<void> {
-  const { timestamp: currTime } = await provider.getBlock("latest");
-  await provider.send("evm_increaseTime", [seconds]);
-  await provider.send("evm_mine", []);
-  const { timestamp: finalTime } = await provider.getBlock("latest");
-  const desired = currTime + seconds;
-  if (finalTime < desired) {
-    const diff = finalTime - desired;
-    await provider.send("evm_increaseTime", [diff]);
-  }
 }

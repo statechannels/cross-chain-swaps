@@ -1,36 +1,32 @@
 import { ethers } from "ethers";
-import { State, signState } from "@statechannels/nitro-protocol";
-import { LEFT_CHAIN_ID, RIGHT_CHAIN_ID } from "../constants";
-import {
-  Executor,
-  logBalances,
-  logTotalGasSpentByAll,
-  Responder,
-  spinUpChains,
-} from "../common/two-chain-setup";
+import { State } from "@statechannels/nitro-protocol";
+import { LEFT_CHAIN_ID } from "../constants";
+import { spinUpChains } from "../common/two-chain-setup";
 import {
   challengeChannel,
   deployContractsToChain,
-  fundChannelFully,
+  fundChannelForDispute,
   pushOutcomeAndTransferAll,
 } from "./helpers";
 import {
   createHashLockChannel,
-  fundChannel,
   preImage,
   correctPreImage,
-  decodeHashLockedSwapData,
-  defundChannel,
   encodeHashLockedSwapData,
   swap,
 } from "./helpers";
 
 const { leftChain: chain, rightChain, tearDownChains } = spinUpChains();
 
-async function main() {
-  // SETUP CONTRACTS ON BOTH CHAINS
-  // Deploy the contracts to chain, and then reconnect them to their respective signers
-  // for the rest of the interactions
+/**
+ * This function works through a dispute scenario and logs gas usage for each ethereum transaction.
+ * The scenario is:
+ * - A 2 participant hash lock channel.
+ * - Alice and Bob deposit into the channel. Practically, only Bob needs to deposit
+ * - Initial outcome is alice: 1 token, bob: 1 token
+ * - Alice disputes the channel by revealing a pre-image.
+ */
+async function dispute() {
   const [
     nitroAdjudicator,
     erc20AssetHolder,
@@ -51,7 +47,7 @@ async function main() {
     ethers.utils.sha256(preImage),
   );
 
-  await fundChannelFully(erc20AssetHolder, token, _preFund0);
+  await fundChannelForDispute(erc20AssetHolder, token, _preFund0);
 
   const unlock4: State = {
     ..._preFund0,
@@ -72,4 +68,4 @@ async function main() {
   await tearDownChains();
 }
 
-main();
+dispute();
