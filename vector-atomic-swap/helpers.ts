@@ -1,4 +1,3 @@
-import * as _ from "lodash";
 import { BigNumber, Contract, ContractFactory, ethers } from "ethers";
 import { TestContractArtifacts } from "@statechannels/nitro-protocol";
 import { artifacts, WithdrawCommitment } from "@connext/vector-contracts";
@@ -21,7 +20,11 @@ import {
 } from "@connext/vector-utils";
 import { solidityKeccak256 } from "ethers/lib/utils";
 import { ONE, SWAP_AMOUNT, ZERO } from "../constants";
-import { Actor, advanceBlocktime } from "../common/two-chain-setup";
+import {
+  Actor,
+  advanceBlocktime,
+  parseTransaction,
+} from "../common/two-chain-setup";
 
 export async function deployContractsToChain(
   chain: ethers.providers.JsonRpcProvider,
@@ -522,37 +525,6 @@ export async function defundTransfer(
     transferState.balance.to[1],
   );
   await parseTransaction(chain, exitTx, "exit transfer");
-}
-
-async function parseTransaction(chain, tx, action: string) {
-  const { gasUsed, transactionHash } = await tx.wait();
-
-  console.log(`Gas used for ${action}: ${gasUsed}`);
-
-  const costPerOpcode = await aggregatedCostPerOpcode(chain, transactionHash);
-  const bigSpenders = costPerOpcode.filter((item) => item.gas >= 200);
-  const refunds = costPerOpcode.filter((item) => item.gas < 0);
-
-  console.log(_.concat(bigSpenders, ["..."], refunds));
-}
-
-async function aggregatedCostPerOpcode(
-  chain: ethers.providers.JsonRpcProvider,
-  txHash: string,
-) {
-  const trace = await chain.send("debug_traceTransaction", [txHash, {}]);
-
-  const ops = _.groupBy(trace.structLogs, (step) => step.op);
-  const sum = (a, b) => a + b;
-  const summary = _.mapValues(ops, (items) => {
-    const gas = items.map((o) => o.gasCost).reduce(sum);
-    const count = items.length;
-
-    const [{ op }] = items;
-    return { count, gas, op };
-  });
-
-  return _.sortBy(_.values(summary), (row) => -row.gas);
 }
 
 // Copy pasted from https://github.com/connext/vector/blob/177b7adc615d6a70d3353bd3472c9040243c636f/modules/contracts/src.ts/tests/cmcs/adjudicator.spec.ts#L117

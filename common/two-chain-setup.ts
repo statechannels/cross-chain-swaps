@@ -1,3 +1,5 @@
+import * as _ from "lodash";
+
 import { Contract, ethers } from "ethers";
 import ganache = require("ganache-core");
 import chalk = require("chalk");
@@ -146,4 +148,35 @@ export async function advanceBlocktime(
     const diff = finalTime - desired;
     await provider.send("evm_increaseTime", [diff]);
   }
+}
+
+export async function parseTransaction(chain, tx, action: string) {
+  const { gasUsed, transactionHash } = await tx.wait();
+
+  console.log(`Gas used for ${action}: ${gasUsed}`);
+
+  const costPerOpcode = await aggregatedCostPerOpcode(chain, transactionHash);
+  const bigSpenders = costPerOpcode.filter((item) => item.gas >= 200);
+  const refunds = costPerOpcode.filter((item) => item.gas < 0);
+
+  console.log(_.concat(bigSpenders, ["..."], refunds));
+}
+
+async function aggregatedCostPerOpcode(
+  chain: ethers.providers.JsonRpcProvider,
+  txHash: string,
+) {
+  const trace = await chain.send("debug_traceTransaction", [txHash, {}]);
+
+  const ops = _.groupBy(trace.structLogs, (step) => step.op);
+  const sum = (a, b) => a + b;
+  const summary = _.mapValues(ops, (items) => {
+    const gas = items.map((o) => o.gasCost).reduce(sum);
+    const count = items.length;
+
+    const [{ op }] = items;
+    return { count, gas, op };
+  });
+
+  return _.sortBy(_.values(summary), (row) => -row.gas);
 }
