@@ -22,6 +22,17 @@
     "go-nitro": "ts-node ./nitro-atomic-swap/happy-case.ts",
     "go-vector": "ts-node ./vector-atomic-swap/happy-case.ts",
     "dispute-nitro": "ts-node ./nitro-atomic-swap/dispute.ts",
-    "dispute-vector": "ts-node ./vector-atomic-swap/dispute.ts"
+    "dispute-vector": "ts-node ./vector-atomic-swap/dispute.ts",
+    "lint:check": "eslint \"**/*.{js,ts}\" --cache",
+    "lint:write": "eslint \"**/*.{js,ts}\" --fix"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^4.22.0",
+    "@typescript-eslint/parser": "^4.22.0",
+    "eslint": "^7.25.0",
+    "eslint-config-prettier": "^8.3.0",
+    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-prettier": "^3.4.0",
+    "prettier": "^2.2.1"
   }
 }

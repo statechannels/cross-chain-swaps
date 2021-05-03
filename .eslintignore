@@ -1,0 +1,9 @@
+/node_modules/
+/coverage/
+!.*
+/.vscode/
+/typings
+**/*.json
+/website/
+/lib/
+/dist/
