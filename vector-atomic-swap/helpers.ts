@@ -1,11 +1,11 @@
-import { BigNumber, Contract, ContractFactory, ethers } from 'ethers'
-import { TestContractArtifacts } from '@statechannels/nitro-protocol'
-import { artifacts, WithdrawCommitment } from '@connext/vector-contracts'
+import { BigNumber, Contract, ContractFactory, ethers } from 'ethers';
+import { TestContractArtifacts } from '@statechannels/nitro-protocol';
+import { artifacts, WithdrawCommitment } from '@connext/vector-contracts';
 import {
     CoreChannelState,
     FullTransferState,
     HashlockTransferStateEncoding,
-} from '@connext/vector-types'
+} from '@connext/vector-types';
 import {
     ChannelSigner,
     createlockHash,
@@ -17,51 +17,51 @@ import {
     hashCoreTransferState,
     hashTransferState,
     signChannelMessage,
-} from '@connext/vector-utils'
-import { solidityKeccak256 } from 'ethers/lib/utils'
-import { ONE, SWAP_AMOUNT, ZERO } from '../constants'
+} from '@connext/vector-utils';
+import { solidityKeccak256 } from 'ethers/lib/utils';
+import { ONE, SWAP_AMOUNT, ZERO } from '../constants';
 import {
     Actor,
     advanceBlocktime,
     parseTransaction,
-} from '../common/two-chain-setup'
+} from '../common/two-chain-setup';
 
 export async function deployContractsToChain(
     chain: ethers.providers.JsonRpcProvider
 ) {
     // This is a one-time operation, so we do not count the gas costs
     // use index 1 (deployer) to pay the ETH
-    const deployer = await chain.getSigner(1)
+    const deployer = await chain.getSigner(1);
 
     const channelMasterCopy = await new ContractFactory(
         artifacts.ChannelMastercopy.abi,
         artifacts.ChannelMastercopy.bytecode,
         deployer
-    ).deploy()
+    ).deploy();
 
     const channelFactory = await new ContractFactory(
         artifacts.ChannelFactory.abi,
         artifacts.ChannelFactory.bytecode,
         deployer
-    ).deploy(channelMasterCopy.address, 0) // args are channelMasterCopy and chainId, but we can use zero for the chainid
+    ).deploy(channelMasterCopy.address, 0); // args are channelMasterCopy and chainId, but we can use zero for the chainid
     //   https://github.com/connext/vector/blob/main/modules/contracts/src.sol/ChannelFactory.sol#L28
 
     const hashLock = await new ContractFactory(
         artifacts.HashlockTransfer.abi,
         artifacts.HashlockTransfer.bytecode,
         deployer
-    ).deploy()
+    ).deploy();
 
     const transferRegistry = await new ContractFactory(
         artifacts.TransferRegistry.abi,
         artifacts.TransferRegistry.bytecode,
         deployer
-    ).deploy()
+    ).deploy();
 
     const token = await ContractFactory.fromSolidity(
         TestContractArtifacts.TokenArtifact,
         deployer
-    ).deploy(await chain.getSigner(0).getAddress())
+    ).deploy(await chain.getSigner(0).getAddress());
 
     return [
         channelMasterCopy,
@@ -69,7 +69,7 @@ export async function deployContractsToChain(
         hashLock,
         transferRegistry,
         token,
-    ].map((contract) => contract.connect(chain.getSigner(0)))
+    ].map((contract) => contract.connect(chain.getSigner(0)));
 }
 
 /**
@@ -88,7 +88,7 @@ export async function fundChannel(
     channelMasterCopy: Contract,
     token?: Contract
 ) {
-    const { chainId } = await chain.getNetwork()
+    const { chainId } = await chain.getNetwork();
     const channelAddress = ethers.utils.getCreate2Address(
         channelFactory.address,
         solidityKeccak256(
@@ -103,7 +103,7 @@ export async function fundChannel(
             ['bytes'],
             [getMinimalProxyInitCode(channelMasterCopy.address)]
         )
-    )
+    );
 
     const core: CoreChannelState = {
         nonce: 1,
@@ -120,27 +120,27 @@ export async function fundChannel(
         defundNonces: [],
         timeout: (60 * 60 * 24 * 2).toString(), // 48 hrs is default,
         merkleRoot: '',
-    }
+    };
 
-    let gasUsed
+    let gasUsed;
     if (token) {
-        ;({ gasUsed } = await (
+        ({ gasUsed } = await (
             await token.transfer(channelAddress, core.balances[0].amount[0])
-        ).wait())
+        ).wait());
     } else {
-        ;({ gasUsed } = await (
+        ({ gasUsed } = await (
             await chain.getSigner().sendTransaction({
                 to: channelAddress,
                 value: core.balances[0].amount[0],
             })
-        ).wait()) // Note that we ignore who *actually* sent the transaction, but attribute it to the proposer here
+        ).wait()); // Note that we ignore who *actually* sent the transaction, but attribute it to the proposer here
     }
 
-    proposer.gasSpent += Number(gasUsed)
+    proposer.gasSpent += Number(gasUsed);
     proposer.log(
         `sent funds to contract on chain ${chainId}, spent ${gasUsed} gas`
-    )
-    return core
+    );
+    return core;
 }
 /**
  * Create the multiSig and deposit (As Alice)
@@ -158,7 +158,7 @@ export async function createAndFundChannel(
     channelMasterCopy: Contract,
     token?: Contract
 ) {
-    const { chainId } = await chain.getNetwork()
+    const { chainId } = await chain.getNetwork();
     const channelAddress = ethers.utils.getCreate2Address(
         channelFactory.address,
         solidityKeccak256(
@@ -173,7 +173,7 @@ export async function createAndFundChannel(
             ['bytes'],
             [getMinimalProxyInitCode(channelMasterCopy.address)]
         )
-    )
+    );
 
     //   console.log(leftChannelAddress);
 
@@ -204,7 +204,7 @@ export async function createAndFundChannel(
         defundNonces: [],
         timeout: (60 * 60 * 24 * 2).toString(), // 48 hrs is default,
         merkleRoot: '',
-    }
+    };
 
     // TODO signatures
     //   const commitment = {
@@ -229,12 +229,12 @@ export async function createAndFundChannel(
             channelFactory.address,
             core.balances[0].amount[0]
         )
-    ).wait()
+    ).wait();
 
-    proposer.gasSpent += Number(gasUsedForAllowance)
+    proposer.gasSpent += Number(gasUsedForAllowance);
     proposer.log(
         `spent ${gasUsedForAllowance} gas increasing allownace for ChannelFactory`
-    )
+    );
 
     const { gasUsed } = await (
         await channelFactory.createChannelAndDepositAlice(
@@ -243,17 +243,17 @@ export async function createAndFundChannel(
             token ? token.address : ethers.constants.AddressZero,
             core.balances[0].amount[0]
         )
-    ).wait() // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
+    ).wait(); // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
     // ideally we check that the new contract deployed at the address we expect
 
-    proposer.gasSpent += Number(gasUsed)
+    proposer.gasSpent += Number(gasUsed);
     proposer.log(
         `called ChannelFactory.createChannelAndDepositAlice on chain ${chainId}, spent ${gasUsed} gas`
-    )
+    );
 
     // TODO next Alice sends a deposit update in the channel. This is like a post fund setup (I think)
     // within vector client code, the amounts will be read off the chain
-    return core
+    return core;
 }
 /**
  * Withdraw funds from the multisig
@@ -271,12 +271,12 @@ export async function defundChannel(
     gasPayer: Actor,
     token?: Contract
 ) {
-    const { chainId } = await chain.getNetwork()
+    const { chainId } = await chain.getNetwork();
     const channel = await new Contract(
         channelAddress,
         artifacts.VectorChannel.abi,
         chain.getSigner(0)
-    )
+    );
 
     const commitment = new WithdrawCommitment(
         channelAddress,
@@ -286,25 +286,25 @@ export async function defundChannel(
         token ? token.address : ethers.constants.AddressZero,
         SWAP_AMOUNT,
         '1'
-    )
+    );
 
     const aliceSig = await new ChannelSigner(
         proposer.signingWallet.privateKey
-    ).signMessage(commitment.hashToSign())
+    ).signMessage(commitment.hashToSign());
     const bobSig = await new ChannelSigner(
         joiner.signingWallet.privateKey
-    ).signMessage(commitment.hashToSign())
+    ).signMessage(commitment.hashToSign());
 
-    const withdrawData = commitment.getWithdrawData()
+    const withdrawData = commitment.getWithdrawData();
 
     const { gasUsed: gasUsed3 } = await (
         await channel.withdraw(withdrawData, aliceSig, bobSig)
-    ).wait() // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
+    ).wait(); // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
 
-    gasPayer.gasSpent += Number(gasUsed3)
+    gasPayer.gasSpent += Number(gasUsed3);
     gasPayer.log(
         `called VectorChannel.withdraw on chain ${chainId} spent ${gasUsed3} gas, total ${gasPayer.gasSpent}`
-    )
+    );
 }
 /**
  * Create2 the multisig and then withdraw funds from it
@@ -323,25 +323,25 @@ export async function createAndDefundChannel(
     channelMasterCopy: Contract,
     token?: Contract
 ) {
-    const { chainId } = await chain.getNetwork()
+    const { chainId } = await chain.getNetwork();
 
     const { gasUsed } = await (
         await channelFactory.createChannel(
             proposer.signingWallet.address,
             joiner.signingWallet.address
         )
-    ).wait()
+    ).wait();
 
-    joiner.gasSpent += Number(gasUsed)
+    joiner.gasSpent += Number(gasUsed);
     joiner.log(
         `called VectorChannel.createChannel on chain ${chainId} spent ${gasUsed} gas, total ${joiner.gasSpent}`
-    )
+    );
 
     const channel = await new Contract(
         channelAddress,
         artifacts.VectorChannel.abi,
         chain.getSigner(0)
-    )
+    );
 
     const commitment = new WithdrawCommitment(
         channelAddress,
@@ -351,32 +351,32 @@ export async function createAndDefundChannel(
         token ? token.address : ethers.constants.AddressZero,
         SWAP_AMOUNT,
         '1'
-    )
+    );
 
     const aliceSig = await new ChannelSigner(
         proposer.signingWallet.privateKey
-    ).signMessage(commitment.hashToSign())
+    ).signMessage(commitment.hashToSign());
     const bobSig = await new ChannelSigner(
         joiner.signingWallet.privateKey
-    ).signMessage(commitment.hashToSign())
+    ).signMessage(commitment.hashToSign());
 
-    const withdrawData = commitment.getWithdrawData()
+    const withdrawData = commitment.getWithdrawData();
 
     const { gasUsed: gasUsed3 } = await (
         await channel.withdraw(withdrawData, aliceSig, bobSig)
-    ).wait() // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
+    ).wait(); // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
 
-    joiner.gasSpent += Number(gasUsed3)
+    joiner.gasSpent += Number(gasUsed3);
     joiner.log(
         `called VectorChannel.withdraw on chain ${chainId} spent ${gasUsed3} gas, total ${joiner.gasSpent}`
-    )
+    );
 }
 
 // functions pulled out of @connext/vector-utils
 export const getMinimalProxyInitCode = (mastercopyAddress: string): string =>
     `0x3d602d80600a3d3981f3363d3d373d3d3d363d73${mastercopyAddress
         .toLowerCase()
-        .replace(/^0x/, '')}5af43d82803e903d91602b57fd5bf3`
+        .replace(/^0x/, '')}5af43d82803e903d91602b57fd5bf3`;
 
 /**
  * Dispute helpers
@@ -390,7 +390,7 @@ export async function createAndFundChannelForDispute(
     transferDefinition: Contract,
     token: Contract
 ) {
-    const { chainId } = await chain.getNetwork()
+    const { chainId } = await chain.getNetwork();
     const channelAddress = ethers.utils.getCreate2Address(
         channelFactory.address,
         solidityKeccak256(
@@ -401,13 +401,13 @@ export async function createAndFundChannelForDispute(
             ['bytes'],
             [getMinimalProxyInitCode(channelMasterCopy.address)]
         )
-    )
+    );
 
-    const preImage = getRandomBytes32()
+    const preImage = getRandomBytes32();
     const state = {
         lockHash: createlockHash(preImage),
         expiry: '0',
-    }
+    };
 
     const transferState = createTestFullHashlockTransferState({
         initiator: alice.address,
@@ -423,8 +423,8 @@ export async function createAndFundChannelForDispute(
             state,
             HashlockTransferStateEncoding
         ),
-    })
-    const { root: merkleRoot } = generateMerkleTreeData([transferState])
+    });
+    const { root: merkleRoot } = generateMerkleTreeData([transferState]);
 
     const core: CoreChannelState = {
         nonce: 1,
@@ -438,11 +438,11 @@ export async function createAndFundChannelForDispute(
         defundNonces: [],
         timeout: (60 * 60 * 24 * 2).toString(), // 48 hrs is default,
         merkleRoot: merkleRoot,
-    }
+    };
 
     const { gasUsed: gasUsedForAllowance } = await (
         await token.increaseAllowance(channelFactory.address, ONE)
-    ).wait()
+    ).wait();
 
     const { gasUsed } = await (
         await channelFactory.createChannelAndDepositAlice(
@@ -451,7 +451,7 @@ export async function createAndFundChannelForDispute(
             token.address,
             ONE
         )
-    ).wait() // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
+    ).wait(); // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
     // ideally we check that the new contract deployed at the address we expect
 
     await (
@@ -459,8 +459,8 @@ export async function createAndFundChannelForDispute(
             to: channelAddress,
             value: ONE,
         })
-    ).wait() // Note that we ignore who *actually* sent the transaction, but attribute it to the proposer here
-    return { coreState: core, transferState }
+    ).wait(); // Note that we ignore who *actually* sent the transaction, but attribute it to the proposer here
+    return { coreState: core, transferState };
 }
 
 export async function disputeChannel(
@@ -469,19 +469,19 @@ export async function disputeChannel(
     aliceSignature: string,
     bobSignature: string
 ) {
-    const { chainId } = await chain.getNetwork()
+    const { chainId } = await chain.getNetwork();
     const channel = await new Contract(
         coreState.channelAddress,
         artifacts.VectorChannel.abi,
         chain.getSigner(0)
-    )
+    );
     const tx = await channel.disputeChannel(
         coreState,
         aliceSignature,
         bobSignature
-    )
+    );
 
-    await parseTransaction(chain, tx, 'dispute channel')
+    await parseTransaction(chain, tx, 'dispute channel');
 }
 
 export async function disputeTransfer(
@@ -489,20 +489,20 @@ export async function disputeTransfer(
     coreState: CoreChannelState,
     transferState: FullTransferState
 ) {
-    const { chainId } = await chain.getNetwork()
+    const { chainId } = await chain.getNetwork();
     const channel = await new Contract(
         transferState.channelAddress,
         artifacts.VectorChannel.abi,
         chain.getSigner(0)
-    )
-    await advanceBlocktime(chain, BigNumber.from(coreState.timeout).toNumber())
+    );
+    await advanceBlocktime(chain, BigNumber.from(coreState.timeout).toNumber());
 
     const tx = await channel.disputeTransfer(
         transferState,
         getMerkleProof([transferState], transferState.transferId)
-    )
+    );
 
-    await parseTransaction(chain, tx, 'dispute transfer')
+    await parseTransaction(chain, tx, 'dispute transfer');
 }
 
 export async function defundTransfer(
@@ -513,12 +513,12 @@ export async function defundTransfer(
     bob: ethers.Wallet,
     token: Contract
 ) {
-    const { chainId } = await chain.getNetwork()
+    const { chainId } = await chain.getNetwork();
     const channel = await new Contract(
         transferState.channelAddress,
         artifacts.VectorChannel.abi,
         chain.getSigner(0)
-    )
+    );
     const defundTx = await channel.defundTransfer(
         transferState,
         encodeTransferState(
@@ -530,23 +530,23 @@ export async function defundTransfer(
             transferState.transferEncodings[1]
         ),
         await signChannelMessage(transferState.initialStateHash, bob.privateKey)
-    )
+    );
 
-    await parseTransaction(chain, defundTx, 'defund transfer')
+    await parseTransaction(chain, defundTx, 'defund transfer');
 
     const exitTx = await channel.exit(
         transferState.assetId,
         transferState.balance.to[1],
         transferState.balance.to[1]
-    )
-    await parseTransaction(chain, exitTx, 'exit transfer')
+    );
+    await parseTransaction(chain, exitTx, 'exit transfer');
 }
 
 // Copy pasted from https://github.com/connext/vector/blob/177b7adc615d6a70d3353bd3472c9040243c636f/modules/contracts/src.ts/tests/cmcs/adjudicator.spec.ts#L117
 // Get merkle proof of transfer
 function getMerkleProof(cts: FullTransferState[], toProve: string) {
-    const { tree } = generateMerkleTreeData(cts)
+    const { tree } = generateMerkleTreeData(cts);
     return tree.getHexProof(
         hashCoreTransferState(cts.find((t) => t.transferId === toProve)!)
-    )
+    );
 }
