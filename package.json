@@ -21,6 +21,7 @@
   "scripts": {
     "go-nitro": "ts-node ./nitro-atomic-swap/happy-case.ts",
     "go-vector": "ts-node ./vector-atomic-swap/happy-case.ts",
+    "go-ninja": "ts-node ./ninja-atomic-swap/happy-case.ts",
     "dispute-nitro": "ts-node ./nitro-atomic-swap/dispute.ts",
     "dispute-vector": "ts-node ./vector-atomic-swap/dispute.ts"
   }
