@@ -122,19 +122,17 @@ export async function fundChannel(
         merkleRoot: '',
     }
 
-    let gasUsed
+    let tx
     if (token) {
-        ;({ gasUsed } = await (
-            await token.transfer(channelAddress, core.balances[0].amount[0])
-        ).wait())
+        tx = await token.transfer(channelAddress, core.balances[0].amount[0])
     } else {
-        ;({ gasUsed } = await (
-            await chain.getSigner().sendTransaction({
-                to: channelAddress,
-                value: core.balances[0].amount[0],
-            })
-        ).wait()) // Note that we ignore who *actually* sent the transaction, but attribute it to the proposer here
+        tx = await chain.getSigner().sendTransaction({
+            to: channelAddress,
+            value: core.balances[0].amount[0],
+        })
     }
+    const gasUsed = await parseTransaction(chain, tx, 'fundChannel')
+    // Note that we ignore who *actually* sent the transaction, but attribute it to the proposer here
 
     proposer.gasSpent += Number(gasUsed)
     proposer.log(
@@ -224,26 +222,32 @@ export async function createAndFundChannel(
     // https://github.com/connext/vector/blob/54f050202290769b0d672d362493b783610908dd/modules/protocol/src/testing/utils/channel.ts#L151-L186
     // Alice creates the multisig and deposits in one tx
 
-    const { gasUsed: gasUsedForAllowance } = await (
-        await token.increaseAllowance(
-            channelFactory.address,
-            core.balances[0].amount[0]
-        )
-    ).wait()
+    let tx = await token.increaseAllowance(
+        channelFactory.address,
+        core.balances[0].amount[0]
+    )
+    const gasUsedForAllowance = await parseTransaction(
+        chain,
+        tx,
+        'increaseAllowance'
+    )
 
     proposer.gasSpent += Number(gasUsedForAllowance)
     proposer.log(
         `spent ${gasUsedForAllowance} gas increasing allownace for ChannelFactory`
     )
 
-    const { gasUsed } = await (
-        await channelFactory.createChannelAndDepositAlice(
-            proposer.signingWallet.address,
-            joiner.signingWallet.address,
-            token ? token.address : ethers.constants.AddressZero,
-            core.balances[0].amount[0]
-        )
-    ).wait() // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
+    tx = await channelFactory.createChannelAndDepositAlice(
+        proposer.signingWallet.address,
+        joiner.signingWallet.address,
+        token ? token.address : ethers.constants.AddressZero,
+        core.balances[0].amount[0]
+    )
+    const gasUsed = await parseTransaction(
+        chain,
+        tx,
+        'createChanneldAndDepositAlice'
+    ) // Note that we ignore who *actually* sent the transaction, but attribute it to the executor here
     // ideally we check that the new contract deployed at the address we expect
 
     proposer.gasSpent += Number(gasUsed)
@@ -297,9 +301,9 @@ export async function defundChannel(
 
     const withdrawData = commitment.getWithdrawData()
 
-    const { gasUsed: gasUsed3 } = await (
-        await channel.withdraw(withdrawData, aliceSig, bobSig)
-    ).wait() // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
+    const tx = await channel.withdraw(withdrawData, aliceSig, bobSig)
+    const gasUsed3 = await parseTransaction(chain, tx, 'withdraw')
+    // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
 
     gasPayer.gasSpent += Number(gasUsed3)
     gasPayer.log(
@@ -362,9 +366,9 @@ export async function createAndDefundChannel(
 
     const withdrawData = commitment.getWithdrawData()
 
-    const { gasUsed: gasUsed3 } = await (
-        await channel.withdraw(withdrawData, aliceSig, bobSig)
-    ).wait() // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
+    const tx = await channel.withdraw(withdrawData, aliceSig, bobSig)
+    const gasUsed3 = await parseTransaction(chain, tx, 'wuthdraw')
+    // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
 
     joiner.gasSpent += Number(gasUsed3)
     joiner.log(
