@@ -32,7 +32,7 @@ export function spinUpChains() {
     console.log(`ganache listening on port ${left.port}...`);
   });
   const leftChain = new ethers.providers.JsonRpcProvider(
-    `http://localhost:${left.port}`,
+    `http://localhost:${left.port}`
   );
   const right = {
     gasPrice: ethers.constants.One.toHexString(),
@@ -56,7 +56,7 @@ export function spinUpChains() {
     console.log(`ganache listening on port ${right.port}...`);
   });
   const rightChain = new ethers.providers.JsonRpcProvider(
-    `http://localhost:${right.port}`,
+    `http://localhost:${right.port}`
   );
 
   async function tearDownChains() {
@@ -88,19 +88,19 @@ export class Actor {
     this.log(
       `I have ${(
         await this.getLeftBalance()
-      ).toString()} tokens on the left chain`,
+      ).toString()} tokens on the left chain`
     );
     this.log(
       `I have ${(
         await this.getRightBalance()
-      ).toString()} tokens on the right chain`,
+      ).toString()} tokens on the right chain`
     );
   }
 
   constructor(
     public signingWallet: ethers.Wallet,
     public leftToken: Contract, // TODO allow this to be undefined and fall back on an ETH swap
-    public rightToken: Contract,
+    public rightToken: Contract
   ) {}
 }
 
@@ -137,7 +137,7 @@ export async function logTotalGasSpentByAll(...actors: Actor[]) {
 // Copied from https://github.com/connext/vector/blob/c8a8deed53cfa7caa58a6466d82fe5d22c208622/modules/contracts/src.ts/utils.ts#L29
 export async function advanceBlocktime(
   provider: ethers.providers.JsonRpcProvider,
-  seconds: number,
+  seconds: number
 ): Promise<void> {
   const { timestamp: currTime } = await provider.getBlock("latest");
   await provider.send("evm_increaseTime", [seconds]);
@@ -160,11 +160,12 @@ export async function parseTransaction(chain, tx, action: string) {
   const refunds = costPerOpcode.filter((item) => item.gas < 0);
 
   console.log(_.concat(bigSpenders, ["..."], refunds));
+  return gasUsed;
 }
 
 async function aggregatedCostPerOpcode(
   chain: ethers.providers.JsonRpcProvider,
-  txHash: string,
+  txHash: string
 ) {
   const trace = await chain.send("debug_traceTransaction", [txHash, {}]);
 

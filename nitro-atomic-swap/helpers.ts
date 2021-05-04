@@ -20,11 +20,15 @@ import {
   encodeOutcome,
   convertAddressToBytes32,
 } from "@statechannels/nitro-protocol";
-import { Actor, advanceBlocktime } from "../common/two-chain-setup";
+import {
+  Actor,
+  advanceBlocktime,
+  parseTransaction,
+} from "../common/two-chain-setup";
 import { SWAP_AMOUNT } from "../constants";
 
 export async function deployContractsToChain(
-  chain: ethers.providers.JsonRpcProvider,
+  chain: ethers.providers.JsonRpcProvider
 ) {
   // This is a one-time operation, so we do not count the gas costs
   // use index 1 (deployer) to pay the ETH
@@ -32,22 +36,22 @@ export async function deployContractsToChain(
 
   const nitroAdjudicator = await ContractFactory.fromSolidity(
     ContractArtifacts.NitroAdjudicatorArtifact,
-    deployer,
+    deployer
   ).deploy();
 
   const token = await ContractFactory.fromSolidity(
     TestContractArtifacts.TokenArtifact,
-    deployer,
+    deployer
   ).deploy(await chain.getSigner(0).getAddress());
 
   const erc20AssetHolder = await ContractFactory.fromSolidity(
     ContractArtifacts.Erc20AssetHolderArtifact,
-    deployer,
+    deployer
   ).deploy(nitroAdjudicator.address, token.address);
 
   const hashLock = await ContractFactory.fromSolidity(
     ContractArtifacts.HashLockedSwapArtifact,
-    deployer,
+    deployer
   ).deploy();
 
   await (
@@ -57,7 +61,7 @@ export async function deployContractsToChain(
   ).wait(); // preload assetholder to represent real-world usage
 
   return [nitroAdjudicator, erc20AssetHolder, hashLock, token].map((contract) =>
-    contract.connect(chain.getSigner(0)),
+    contract.connect(chain.getSigner(0))
   );
 }
 
@@ -70,14 +74,14 @@ interface HashLockedSwapData {
 export function encodeHashLockedSwapData(data: HashLockedSwapData): string {
   return ethers.utils.defaultAbiCoder.encode(
     ["tuple(bytes32 h, bytes preImage)"],
-    [data],
+    [data]
   );
 }
 
 export function decodeHashLockedSwapData(data: string): HashLockedSwapData {
   const { h, preImage } = ethers.utils.defaultAbiCoder.decode(
     ["tuple(bytes32 h, bytes preImage)"],
-    data,
+    data
   )[0];
   return { h, preImage };
 }
@@ -96,7 +100,7 @@ export function createHashLockChannel(
   assetHolderAddress: string,
   proposerWallet: ethers.Wallet,
   joinerWallet: ethers.Wallet,
-  hash,
+  hash
 ) {
   const appData = encodeHashLockedSwapData({ h: hash, preImage: "0x" });
   const channel: Channel = {
@@ -136,14 +140,14 @@ export async function fundChannel(
   token: ethers.Contract,
   initialState: State,
   proposer: Actor,
-  joiner: Actor,
+  joiner: Actor
 ) {
   // Proposer proposes a channel with a hashlocked payment for the joiner
   const PreFund0 = signState(initialState, proposer.signingWallet.privateKey);
   const channelId = getChannelId(initialState.channel);
   // not shown: pf0 delivered to joiner
   proposer.log(
-    `I propose a hashlocked payment, sending PreFund0 for chain ${initialState.channel.chainId}`,
+    `I propose a hashlocked payment, sending PreFund0 for chain ${initialState.channel.chainId}`
   );
   // skip: Joiner checks that the timeout is long enough
   // skip: Joiner checks that their destination is in the channel (in the receiving slot)
@@ -152,7 +156,7 @@ export async function fundChannel(
   const _PreFund1: State = { ...initialState, turnNum: 1 };
   const PreFund1 = signState(_PreFund1, joiner.signingWallet.privateKey);
   joiner.log(
-    `Sure thing. Your channel looks good. Sending PreFund1 for chain ${initialState.channel.chainId}`,
+    `Sure thing. Your channel looks good. Sending PreFund1 for chain ${initialState.channel.chainId}`
   );
 
   const joinerToReactToDeposit = new Promise((resolve, reject) => {
@@ -162,11 +166,11 @@ export async function fundChannel(
         const _PostFund3: State = { ...initialState, turnNum: 3 };
         const PostFund3 = signState(
           _PostFund3,
-          joiner.signingWallet.privateKey,
+          joiner.signingWallet.privateKey
         );
         // not shown: PostFund3 delivered to proposer
         joiner.log(
-          `I see your deposit and send PostFund3 for chain ${initialState.channel.chainId}`,
+          `I see your deposit and send PostFund3 for chain ${initialState.channel.chainId}`
         );
         resolve(event);
       }
@@ -178,7 +182,7 @@ export async function fundChannel(
   const _PostFund2: State = { ...initialState, turnNum: 2 };
   signState(_PostFund2, proposer.signingWallet.privateKey);
   proposer.log(
-    `I have made my deposit, and send PostFund2 for chain ${initialState.channel.chainId}`,
+    `I have made my deposit, and send PostFund2 for chain ${initialState.channel.chainId}`
   );
 
   const value = (initialState.outcome[0] as AllocationAssetOutcome)
@@ -186,19 +190,23 @@ export async function fundChannel(
 
   // proposer increases the allowance of the ERC20Assetholder
 
-  const { gasUsed: increaseAllowanceGas } = await (
-    await token.increaseAllowance(erc20AssetHolder.address, value)
-  ).wait();
+  let tx = await token.increaseAllowance(erc20AssetHolder.address, value);
+  const increaseAllowanceGas = await parseTransaction(
+    token.provider,
+    tx,
+    "increaseAllowance"
+  );
 
   proposer.gasSpent += Number(increaseAllowanceGas);
   proposer.log(
-    "spent " + increaseAllowanceGas + " gas increasing token allowance",
+    "spent " + increaseAllowanceGas + " gas increasing token allowance"
   );
 
   // Proposer funds channel (costs gas)
-  const { gasUsed: depositGas } = await (
-    await erc20AssetHolder.deposit(channelId, 0, value)
-  ).wait();
+
+  tx = await erc20AssetHolder.deposit(channelId, 0, value);
+  const depositGas = await parseTransaction(token.provider, tx, "deposit");
+
   proposer.gasSpent += Number(depositGas);
   proposer.log("spent " + depositGas + " gas depositing tokens");
 
@@ -213,17 +221,17 @@ export async function defundChannel(
   proposer: Actor,
   joiner: Actor,
   hashLock: Contract,
-  nitroAdjudicator: Contract,
+  nitroAdjudicator: Contract
 ) {
   const unlockValid = await hashLock.validTransition(
     getVariablePart(initialState),
     getVariablePart(unlockState),
     4, // turnNumB
-    2, // numParticipants
+    2 // numParticipants
   );
   if (!unlockValid) throw Error;
   proposer.log(
-    `I verified your unlock was valid; Here's a final state to help you withdraw on chain ${initialState.channel.chainId}`,
+    `I verified your unlock was valid; Here's a final state to help you withdraw on chain ${initialState.channel.chainId}`
   );
   const _isFinal5: State = { ...unlockState, isFinal: true };
   const isFinal5 = signState(_isFinal5, proposer.signingWallet.privateKey);
@@ -242,20 +250,23 @@ export async function defundChannel(
     nitroAdjudicator.once("Concluded", listener);
   });
 
-  const { gasUsed } = await (
-    await nitroAdjudicator.concludePushOutcomeAndTransferAll(
-      _isFinal5.turnNum,
-      getFixedPart(_isFinal5),
-      hashAppPart(_isFinal5),
-      encodeOutcome(_isFinal5.outcome),
-      1,
-      [0, 0],
-      sigs,
-    )
-  ).wait();
+  const tx = await nitroAdjudicator.concludePushOutcomeAndTransferAll(
+    _isFinal5.turnNum,
+    getFixedPart(_isFinal5),
+    hashAppPart(_isFinal5),
+    encodeOutcome(_isFinal5.outcome),
+    1,
+    [0, 0],
+    sigs
+  );
+  const gasUsed = await parseTransaction(
+    nitroAdjudicator.provider,
+    tx,
+    "concludePushOutcomeAndTransferAll"
+  );
   joiner.gasSpent += Number(gasUsed);
   joiner.log(
-    `Spent ${gasUsed} gas calling concludePushOutcomeAndTransferAll, total ${joiner.gasSpent}`,
+    `Spent ${gasUsed} gas calling concludePushOutcomeAndTransferAll, total ${joiner.gasSpent}`
   );
   await concludedEvent;
 }
@@ -283,7 +294,7 @@ export function swap(outcome: Outcome): Outcome {
 export async function fundChannelForDispute(
   erc20AssetHolder: ethers.Contract,
   token: ethers.Contract,
-  initialState: State,
+  initialState: State
 ) {
   const channelId = getChannelId(initialState.channel);
   const value = (initialState.outcome[0] as AllocationAssetOutcome)
@@ -305,7 +316,7 @@ export async function challengeChannel(
   challengeState1: State,
   challengeState2: State,
   alice: ethers.Wallet,
-  bob: ethers.Wallet,
+  bob: ethers.Wallet
 ) {
   const fixedPart = getFixedPart(challengeState1);
   const largestTurnNum = challengeState2.turnNum;
@@ -322,7 +333,7 @@ export async function challengeChannel(
   };
   const challengeSignature = signChallengeMessage(
     [challengeStateToSign],
-    alice.privateKey,
+    alice.privateKey
   );
   const { gasUsed } = await (
     await nitroAdjudicator.challenge(
@@ -332,7 +343,7 @@ export async function challengeChannel(
       isFinalCount,
       signatures,
       whoSignedWhat,
-      challengeSignature,
+      challengeSignature
     )
   ).wait();
   console.log(`Gas used to challenge ${gasUsed}`);
@@ -342,7 +353,7 @@ export async function pushOutcomeAndTransferAll(
   chain: ethers.providers.JsonRpcProvider,
   nitroAdjudicator: ethers.Contract,
   challengeState: State,
-  alice: ethers.Wallet,
+  alice: ethers.Wallet
 ) {
   const channelId = getChannelId(getFixedPart(challengeState));
   const fingerprint = await nitroAdjudicator.unpackStatus(channelId);
@@ -361,7 +372,7 @@ export async function pushOutcomeAndTransferAll(
       finalizesAt,
       stateHash,
       challengerAddress,
-      outcomeBytes,
+      outcomeBytes
     )
   ).wait();
   console.log(`Gas used for pushOutcomeAndTransferAll is ${gasUsed}`);
