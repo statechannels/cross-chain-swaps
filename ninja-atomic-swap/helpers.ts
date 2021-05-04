@@ -17,7 +17,7 @@ import {
   encodeOutcome,
   convertAddressToBytes32,
 } from "@statechannels/nitro-protocol";
-import { Actor } from "../common/two-chain-setup";
+import { Actor, parseTransaction } from "../common/two-chain-setup";
 import { SWAP_AMOUNT } from "../constants";
 
 export async function deployContractsToChain(
@@ -180,19 +180,18 @@ export async function fundChannel(
   // const value = (initialState.outcome[0] as AllocationAssetOutcome)
   //   .allocationItems[0].amount;
 
-  let gasUsed;
+  let tx;
   if (token) {
-    ({ gasUsed } = await (
-      await token.transfer(channelAddress, SWAP_AMOUNT)
-    ).wait());
+    tx = await token.transfer(channelAddress, SWAP_AMOUNT);
   } else {
-    ({ gasUsed } = await (
-      await chain.getSigner().sendTransaction({
-        to: channelAddress,
-        value: SWAP_AMOUNT,
-      })
-    ).wait()); // Note that we ignore who *actually* sent the transaction, but attribute it to the proposer here
+    tx = await chain.getSigner().sendTransaction({
+      to: channelAddress,
+      value: SWAP_AMOUNT,
+    });
+    // Note that we ignore who *actually* sent the transaction, but attribute it to the proposer here
   }
+
+  const gasUsed = await parseTransaction(chain, tx, "fundChannel");
 
   proposer.gasSpent += Number(gasUsed);
   proposer.log(
@@ -238,18 +237,21 @@ export async function defundChannel(
     signState(_isFinal5, joiner.signingWallet.privateKey).signature,
   ];
 
-  const { gasUsed } = await (
-    await adjudicatorFactory.createAndPayout(
-      getChannelId(unlockState.channel),
-      _isFinal5.turnNum,
-      getFixedPart(_isFinal5),
-      hashAppPart(_isFinal5),
-      encodeOutcome(_isFinal5.outcome),
-      1,
-      [0, 0],
-      sigs
-    )
-  ).wait();
+  const tx = await adjudicatorFactory.createAndPayout(
+    getChannelId(unlockState.channel),
+    _isFinal5.turnNum,
+    getFixedPart(_isFinal5),
+    hashAppPart(_isFinal5),
+    encodeOutcome(_isFinal5.outcome),
+    1,
+    [0, 0],
+    sigs
+  );
+  const gasUsed = await parseTransaction(
+    adjudicatorFactory.provider,
+    tx,
+    "createAndPayout"
+  );
   joiner.gasSpent += Number(gasUsed);
   joiner.log(
     `Spent ${gasUsed} gas calling adjudicatorFactory.deployAndPayout, total ${joiner.gasSpent}`
