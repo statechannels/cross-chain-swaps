@@ -22,7 +22,8 @@
     "go-nitro": "ts-node ./nitro-atomic-swap/happy-case.ts",
     "go-vector": "ts-node ./vector-atomic-swap/happy-case.ts",
     "dispute-nitro": "ts-node ./nitro-atomic-swap/dispute.ts",
-    "dispute-vector": "ts-node ./vector-atomic-swap/dispute.ts"
+    "dispute-vector": "ts-node ./vector-atomic-swap/dispute.ts",
+    "prettier:write": "prettier --write './**/*.ts'"
   },
   "devDependencies": {
     "prettier": "^2.2.1"
