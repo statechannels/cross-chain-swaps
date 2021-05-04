@@ -1,5 +1,5 @@
-import { ethers } from 'ethers'
-import { CoreTransferState } from '@connext/vector-types'
+import { ethers } from 'ethers';
+import { CoreTransferState } from '@connext/vector-types';
 
 import {
     Actor,
@@ -8,16 +8,16 @@ import {
     spinUpChains,
     logBalances,
     logTotalGasSpentByAll,
-} from '../common/two-chain-setup'
+} from '../common/two-chain-setup';
 import {
     deployContractsToChain,
     fundChannel,
     createAndFundChannel,
     createAndDefundChannel,
     defundChannel,
-} from './helpers'
+} from './helpers';
 
-const { leftChain, rightChain, tearDownChains } = spinUpChains()
+const { leftChain, rightChain, tearDownChains } = spinUpChains();
 
 // See https://github.com/connext/vector/blob/main/modules/protocol/src/testing/integration/happy.spec.ts
 // Will it be easier to use vector class instances (wallets)? Or try and go state-by-state as we did with nitro?
@@ -31,7 +31,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
 // Explore unhappy cases
 // Explore off-chain funding use case
 
-;(async function () {
+(async function () {
     // SETUP CONTRACTS ON BOTH CHAINS
     // Deploy the contracts to chain, and then reconnect them to their respective signers
     // for the rest of the interactions
@@ -41,18 +41,18 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         leftHashLock,
         leftTransferRegistry,
         leftToken,
-    ] = await deployContractsToChain(leftChain)
+    ] = await deployContractsToChain(leftChain);
     const [
         rightChannelMasterCopy,
         rightChannelFactory,
         rightHashLock,
         rightTransferRegistry,
         rightToken,
-    ] = await deployContractsToChain(rightChain)
+    ] = await deployContractsToChain(rightChain);
 
-    const executor = new Executor(leftToken, rightToken)
-    const responder = new Responder(leftToken, rightToken)
-    await logBalances(executor, responder)
+    const executor = new Executor(leftToken, rightToken);
+    const responder = new Responder(leftToken, rightToken);
+    await logBalances(executor, responder);
 
     const leftCore = await fundChannel(
         leftChain,
@@ -61,7 +61,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         leftChannelFactory,
         leftChannelMasterCopy,
         leftToken
-    )
+    );
 
     const leftConditionalTransfer: CoreTransferState = {
         channelAddress: leftCore.channelAddress,
@@ -73,7 +73,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         balance: { amount: ['0x1'], to: [executor.signingWallet.address] },
         transferTimeout: leftCore.timeout,
         initialStateHash: ethers.constants.HashZero, // TODO
-    }
+    };
 
     // TODO sign and send this state.
 
@@ -84,7 +84,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         rightChannelFactory,
         rightChannelMasterCopy,
         rightToken
-    )
+    );
 
     // given the longChannel is now funded and running
     // the responder needs to incentivize the executor to do the swap
@@ -104,7 +104,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         leftChannelFactory,
         leftChannelMasterCopy,
         leftToken
-    )
+    );
     await defundChannel(
         rightCore.channelAddress,
         responder,
@@ -112,11 +112,11 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         rightChain,
         responder,
         rightToken
-    )
+    );
 
-    await logBalances(executor, responder)
-    logTotalGasSpentByAll(executor, responder)
+    await logBalances(executor, responder);
+    logTotalGasSpentByAll(executor, responder);
 
     // teardown blockchains
-    await tearDownChains()
-})()
+    await tearDownChains();
+})();

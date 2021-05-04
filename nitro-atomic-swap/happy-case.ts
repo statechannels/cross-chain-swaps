@@ -1,14 +1,14 @@
-import { ethers } from 'ethers'
-import { State, signState } from '@statechannels/nitro-protocol'
-import { LEFT_CHAIN_ID, RIGHT_CHAIN_ID } from '../constants'
+import { ethers } from 'ethers';
+import { State, signState } from '@statechannels/nitro-protocol';
+import { LEFT_CHAIN_ID, RIGHT_CHAIN_ID } from '../constants';
 import {
     Executor,
     logBalances,
     logTotalGasSpentByAll,
     Responder,
     spinUpChains,
-} from '../common/two-chain-setup'
-import { deployContractsToChain } from './helpers'
+} from '../common/two-chain-setup';
+import { deployContractsToChain } from './helpers';
 import {
     createHashLockChannel,
     fundChannel,
@@ -18,9 +18,9 @@ import {
     defundChannel,
     encodeHashLockedSwapData,
     swap,
-} from './helpers'
+} from './helpers';
 
-const { leftChain, rightChain, tearDownChains } = spinUpChains()
+const { leftChain, rightChain, tearDownChains } = spinUpChains();
 
 // Spin up two instances of ganache.
 // Deploy NitroAdjudicator, ERC20AssetHolder, HashLock to both instances
@@ -31,7 +31,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
 
 // *****
 
-;(async function () {
+(async function () {
     // SETUP CONTRACTS ON BOTH CHAINS
     // Deploy the contracts to chain, and then reconnect them to their respective signers
     // for the rest of the interactions
@@ -40,18 +40,18 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         leftERC20AssetHolder,
         leftHashLock,
         leftToken,
-    ] = await deployContractsToChain(leftChain)
+    ] = await deployContractsToChain(leftChain);
     const [
         rightNitroAdjudicator,
         rightERC20AssetHolder,
         rightHashLock,
         rightToken,
-    ] = await deployContractsToChain(rightChain)
+    ] = await deployContractsToChain(rightChain);
 
-    const executor = new Executor(leftToken, rightToken)
-    const responder = new Responder(leftToken, rightToken)
+    const executor = new Executor(leftToken, rightToken);
+    const responder = new Responder(leftToken, rightToken);
 
-    await logBalances(executor, responder)
+    await logBalances(executor, responder);
 
     const _PreFund0 = createHashLockChannel(
         LEFT_CHAIN_ID,
@@ -61,7 +61,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         executor.signingWallet,
         responder.signingWallet,
         ethers.utils.sha256(preImage)
-    )
+    );
 
     // exchanges setup states and funds on left chain
     const longChannel = await fundChannel(
@@ -70,7 +70,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         _PreFund0,
         executor,
         responder
-    )
+    );
 
     // given the longChannel is now funded and running
     // the responder needs to incentivize the executor to do the swap
@@ -82,7 +82,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         responder.signingWallet,
         executor.signingWallet,
         decodeHashLockedSwapData(_PreFund0.appData).h
-    )
+    );
 
     const shortChannel = await fundChannel(
         rightERC20AssetHolder,
@@ -90,7 +90,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         _preFund0,
         responder,
         executor
-    )
+    );
 
     // await logBalances(executor, responder); // uncomment this to check deposit was legit
 
@@ -100,13 +100,13 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
         turnNum: 4,
         appData: encodeHashLockedSwapData(correctPreImage),
         outcome: swap(_preFund0.outcome),
-    }
-    const unlock4 = signState(_unlock4, executor.signingWallet.privateKey)
+    };
+    const unlock4 = signState(_unlock4, executor.signingWallet.privateKey);
 
     // responder decodes the preimage and unlocks the payment that benefits her
     const decodedPreImage = decodeHashLockedSwapData(unlock4.state.appData)
-        .preImage
-    const decodedHash = decodeHashLockedSwapData(unlock4.state.appData).h
+        .preImage;
+    const decodedHash = decodeHashLockedSwapData(unlock4.state.appData).h;
     const _Unlock4: State = {
         ..._PreFund0,
         turnNum: 4,
@@ -115,8 +115,8 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
             preImage: decodedPreImage,
         }),
         outcome: swap(_PreFund0.outcome),
-    }
-    const Unlock4 = signState(_Unlock4, responder.signingWallet.privateKey)
+    };
+    const Unlock4 = signState(_Unlock4, responder.signingWallet.privateKey);
 
     // both channels are collaboratively defunded
     await Promise.all([
@@ -136,11 +136,11 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains()
             leftHashLock,
             leftNitroAdjudicator
         ),
-    ])
+    ]);
 
-    await logBalances(executor, responder)
-    logTotalGasSpentByAll(executor, responder)
+    await logBalances(executor, responder);
+    logTotalGasSpentByAll(executor, responder);
 
     // teardown blockchains
-    await tearDownChains()
-})()
+    await tearDownChains();
+})();
