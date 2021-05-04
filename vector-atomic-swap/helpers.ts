@@ -367,7 +367,7 @@ export async function createAndDefundChannel(
     const withdrawData = commitment.getWithdrawData()
 
     const tx = await channel.withdraw(withdrawData, aliceSig, bobSig)
-    const gasUsed3 = await parseTransaction(chain, tx, 'wuthdraw')
+    const gasUsed3 = await parseTransaction(chain, tx, 'withdraw')
     // once again we attribute the gas to the responder, even if they didn't call the function (they may not have ETH in this test)
 
     joiner.gasSpent += Number(gasUsed3)
