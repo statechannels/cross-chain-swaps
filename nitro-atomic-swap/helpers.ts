@@ -197,10 +197,10 @@ export async function fundChannel(
 
     // proposer increases the allowance of the ERC20Assetholder
 
-    let tx = await token.increaseAllowance(erc20AssetHolder.address, value);
+    const tx0 = await token.increaseAllowance(erc20AssetHolder.address, value);
     const increaseAllowanceGas = await parseTransaction(
         token.provider,
-        tx,
+        tx0,
         'increaseAllowance'
     );
 
@@ -211,8 +211,8 @@ export async function fundChannel(
 
     // Proposer funds channel (costs gas)
 
-    tx = await erc20AssetHolder.deposit(channelId, 0, value);
-    const depositGas = await parseTransaction(token.provider, tx, 'deposit');
+    const tx1 = await erc20AssetHolder.deposit(channelId, 0, value);
+    const depositGas = await parseTransaction(token.provider, tx1, 'deposit');
 
     proposer.gasSpent += Number(depositGas);
     proposer.log('spent ' + depositGas + ' gas depositing tokens');
