@@ -1,4 +1,4 @@
-import { BigNumber } from "ethers";
+import { BigNumber } from 'ethers';
 
 export const ZERO = BigNumber.from(0).toHexString();
 export const ONE = BigNumber.from(1).toHexString();
