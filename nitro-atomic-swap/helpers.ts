@@ -20,7 +20,11 @@ import {
     encodeOutcome,
     convertAddressToBytes32,
 } from '@statechannels/nitro-protocol';
-import { Actor, advanceBlocktime } from '../common/two-chain-setup';
+import {
+    Actor,
+    advanceBlocktime,
+    parseTransaction,
+} from '../common/two-chain-setup';
 import { SWAP_AMOUNT } from '../constants';
 
 export async function deployContractsToChain(
@@ -193,9 +197,12 @@ export async function fundChannel(
 
     // proposer increases the allowance of the ERC20Assetholder
 
-    const { gasUsed: increaseAllowanceGas } = await (
-        await token.increaseAllowance(erc20AssetHolder.address, value)
-    ).wait();
+    const tx0 = await token.increaseAllowance(erc20AssetHolder.address, value);
+    const increaseAllowanceGas = await parseTransaction(
+        token.provider,
+        tx0,
+        'increaseAllowance'
+    );
 
     proposer.gasSpent += Number(increaseAllowanceGas);
     proposer.log(
@@ -203,9 +210,10 @@ export async function fundChannel(
     );
 
     // Proposer funds channel (costs gas)
-    const { gasUsed: depositGas } = await (
-        await erc20AssetHolder.deposit(channelId, 0, value)
-    ).wait();
+
+    const tx1 = await erc20AssetHolder.deposit(channelId, 0, value);
+    const depositGas = await parseTransaction(token.provider, tx1, 'deposit');
+
     proposer.gasSpent += Number(depositGas);
     proposer.log('spent ' + depositGas + ' gas depositing tokens');
 
@@ -249,17 +257,20 @@ export async function defundChannel(
         nitroAdjudicator.once('Concluded', listener);
     });
 
-    const { gasUsed } = await (
-        await nitroAdjudicator.concludePushOutcomeAndTransferAll(
-            _isFinal5.turnNum,
-            getFixedPart(_isFinal5),
-            hashAppPart(_isFinal5),
-            encodeOutcome(_isFinal5.outcome),
-            1,
-            [0, 0],
-            sigs
-        )
-    ).wait();
+    const tx = await nitroAdjudicator.concludePushOutcomeAndTransferAll(
+        _isFinal5.turnNum,
+        getFixedPart(_isFinal5),
+        hashAppPart(_isFinal5),
+        encodeOutcome(_isFinal5.outcome),
+        1,
+        [0, 0],
+        sigs
+    );
+    const gasUsed = await parseTransaction(
+        nitroAdjudicator.provider,
+        tx,
+        'concludePushOutcomeAndTransferAll'
+    );
     joiner.gasSpent += Number(gasUsed);
     joiner.log(
         `Spent ${gasUsed} gas calling concludePushOutcomeAndTransferAll, total ${joiner.gasSpent}`

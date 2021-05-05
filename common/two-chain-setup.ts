@@ -160,6 +160,7 @@ export async function parseTransaction(chain, tx, action: string) {
     const refunds = costPerOpcode.filter((item) => item.gas < 0);
 
     console.log(_.concat(bigSpenders, ['...'], refunds));
+    return gasUsed;
 }
 
 async function aggregatedCostPerOpcode(
