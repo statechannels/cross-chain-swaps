@@ -31,7 +31,7 @@ Note also that much of the off-chain messaging is not well understood just now (
 
 ## Nitro protocol
 
-Nitro protocol also supports atomic swaps. It might offer higher secutiry and lower gas costs.
+Nitro protocol also supports atomic swaps.
 
 In [nitro-atomic-swap/happy-case.ts](./nitro-atomic-swap/happy-case.ts), there is a script which will setup the two chains, deploy the relevant contacts to both chains, and fund/defund channels to execute the swap. Note that the state channel message passing part, plus any checks that should be done in a real application, is only partially complete.
 
