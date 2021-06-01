@@ -77,7 +77,7 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
 
     // TODO sign and send this state.
 
-    const rightCore = await createAndFundChannel(
+    const rightCore = await fundChannel(
         rightChain,
         responder,
         executor,
@@ -105,12 +105,13 @@ const { leftChain, rightChain, tearDownChains } = spinUpChains();
         leftChannelMasterCopy,
         leftToken
     );
-    await defundChannel(
+    await createAndDefundChannel(
         rightCore.channelAddress,
         responder,
         executor,
         rightChain,
-        responder,
+        rightChannelFactory,
+        rightChannelMasterCopy,
         rightToken
     );
 
